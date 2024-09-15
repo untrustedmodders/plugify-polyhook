@@ -1,0 +1,1218 @@
+{
+  "fileVersion": 1,
+  "version": ${POLYHOOK_VERSION},
+  "versionName": "v${POLYHOOK_VERSION}",
+  "friendlyName": "PolyHook API",
+  "description": "The x86/x64 API Hooking Library.",
+  "createdBy": "stevemk14ebr",
+  "createdByURL": "https://github.com/stevemk14ebr/PolyHook_2_0",
+  "docsURL": "https://github.com/stevemk14ebr/PolyHook_2_0",
+  "downloadURL": "https://github.com/untrustedmodders/polyhook/releases/download/v${POLYHOOK_VERSION}/${POLYHOOK_PACKAGE}.zip",
+  "updateURL": "https://untrustedmodders.github.com/polyhook/polyhook.json",
+  "entryPoint": "bin/polyhook",
+  "supportedPlatforms": [],
+  "languageModule": {
+    "name": "cpp"
+  },
+  "dependencies": [],
+  "exportedMethods": [
+    {
+      "name": "HookDetour",
+      "funcName": "HookDetour",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pFunc"
+        },
+        {
+          "type": "uint8",
+          "name": "returnType"
+        },
+        {
+          "type": "uint8*",
+          "name": "arguments"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
+      }
+    },
+    {
+      "name": "HookVirtual",
+      "funcName": "HookVirtual",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pClass"
+        },
+        {
+          "type": "int32",
+          "name": "index"
+        },
+        {
+          "type": "uint8",
+          "name": "returnType"
+        },
+        {
+          "type": "uint8*",
+          "name": "arguments"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
+      }
+    },
+    {
+      "name": "HookVirtualByFunc",
+      "funcName": "HookVirtualByFunc",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pClass"
+        },
+        {
+          "type": "ptr64",
+          "name": "pFunc"
+        },
+        {
+          "type": "uint8",
+          "name": "returnType"
+        },
+        {
+          "type": "uint8*",
+          "name": "arguments"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
+      }
+    },
+    {
+      "name": "UnhookDetour",
+      "funcName": "UnhookDetour",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pFunc"
+        }
+      ],
+      "retType": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "UnhookVirtual",
+      "funcName": "UnhookVirtual",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pClass"
+        },
+        {
+          "type": "int32",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "UnhookVirtualByFunc",
+      "funcName": "UnhookVirtualByFunc",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pClass"
+        },
+        {
+          "type": "ptr64",
+          "name": "pFunc"
+        }
+      ],
+      "retType": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "FindDetour",
+      "funcName": "FindDetour",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pFunc"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
+      }
+    },
+    {
+      "name": "FindVirtual",
+      "funcName": "FindVirtual",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pClass"
+        },
+        {
+          "type": "int32",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
+      }
+    },
+    {
+      "name": "FindVirtualByFunc",
+      "funcName": "FindVirtualByFunc",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pClass"
+        },
+        {
+          "type": "ptr64",
+          "name": "pFunc"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
+      }
+    },
+    {
+      "name": "UnhookAll",
+      "funcName": "UnhookAll",
+      "paramTypes": [
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "HookAllVirtual",
+      "funcName": "HookAllVirtual",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pClass"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "AddCallback",
+      "funcName": "AddCallback",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "hook"
+        },
+        {
+          "type": "function",
+          "name": "handler",
+          "prototype": {
+            "name": "CallbackHandler",
+            "funcName": "CallbackHandler",
+            "paramTypes": [
+              {
+                "type": "ptr64",
+                "name": "params"
+              },
+              {
+                "type": "int32",
+                "name": "count"
+              },
+              {
+                "type": "ptr64",
+                "name": "ret"
+              }
+            ],
+            "retType": {
+              "type": "void"
+            }
+          }
+        }
+      ],
+      "retType": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "RemoveCallback",
+      "funcName": "RemoveCallback",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "hook"
+        },
+        {
+          "type": "function",
+          "name": "handler",
+          "prototype": {
+            "name": "CallbackHandler",
+            "funcName": "CallbackHandler",
+            "paramTypes": [
+              {
+                "type": "ptr64",
+                "name": "params"
+              },
+              {
+                "type": "int32",
+                "name": "count"
+              },
+              {
+                "type": "ptr64",
+                "name": "ret"
+              }
+            ],
+            "retType": {
+              "type": "void"
+            }
+          }
+        }
+      ],
+      "retType": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "IsCallbackRegistered",
+      "funcName": "IsCallbackRegistered",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "hook"
+        },
+        {
+          "type": "function",
+          "name": "handler",
+          "prototype": {
+            "name": "CallbackHandler",
+            "funcName": "CallbackHandler",
+            "paramTypes": [
+              {
+                "type": "ptr64",
+                "name": "params"
+              },
+              {
+                "type": "int32",
+                "name": "count"
+              },
+              {
+                "type": "ptr64",
+                "name": "ret"
+              }
+            ],
+            "retType": {
+              "type": "void"
+            }
+          }
+        }
+      ],
+      "retType": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "AreCallbacksRegistered",
+      "funcName": "AreCallbacksRegistered",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "hook"
+        }
+      ],
+      "retType": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "GetArgumentBool",
+      "funcName": "GetArgumentBool",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "GetArgumentInt8",
+      "funcName": "GetArgumentInt8",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "int8"
+      }
+    },
+    {
+      "name": "GetArgumentUInt8",
+      "funcName": "GetArgumentUInt8",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "uint8"
+      }
+    },
+    {
+      "name": "GetArgumentInt16",
+      "funcName": "GetArgumentInt16",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "int16"
+      }
+    },
+    {
+      "name": "GetArgumentUInt16",
+      "funcName": "GetArgumentUInt16",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "uint16"
+      }
+    },
+    {
+      "name": "GetArgumentInt32",
+      "funcName": "GetArgumentInt32",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "int32"
+      }
+    },
+    {
+      "name": "GetArgumentUInt32",
+      "funcName": "GetArgumentUInt32",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "uint32"
+      }
+    },
+    {
+      "name": "GetArgumentInt64",
+      "funcName": "GetArgumentInt64",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "int64"
+      }
+    },
+    {
+      "name": "GetArgumentUInt64",
+      "funcName": "GetArgumentUInt64",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "uint64"
+      }
+    },
+    {
+      "name": "GetArgumentFloat",
+      "funcName": "GetArgumentFloat",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "float"
+      }
+    },
+    {
+      "name": "GetArgumentDouble",
+      "funcName": "GetArgumentDouble",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "double"
+      }
+    },
+    {
+      "name": "GetArgumentPointer",
+      "funcName": "GetArgumentPointer",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
+      }
+    },
+    {
+      "name": "GetArgumentString",
+      "funcName": "GetArgumentString",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        }
+      ],
+      "retType": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "SetArgumentBool",
+      "funcName": "SetArgumentBool",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "bool",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentInt8",
+      "funcName": "SetArgumentInt8",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "int8",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentUInt8",
+      "funcName": "SetArgumentUInt8",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "uint8",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentInt16",
+      "funcName": "SetArgumentInt16",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "int16",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentUInt16",
+      "funcName": "SetArgumentUInt16",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "uint16",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentInt32",
+      "funcName": "SetArgumentInt32",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "int32",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentUInt32",
+      "funcName": "SetArgumentUInt32",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "uint32",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentInt64",
+      "funcName": "SetArgumentInt64",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "int64",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentUInt64",
+      "funcName": "SetArgumentUInt64",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "uint64",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentFloat",
+      "funcName": "SetArgumentFloat",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "float",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentDouble",
+      "funcName": "SetArgumentDouble",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "double",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentPointer",
+      "funcName": "SetArgumentPointer",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "ptr64",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetArgumentString",
+      "funcName": "SetArgumentString",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "params"
+        },
+        {
+          "type": "uint64",
+          "name": "index"
+        },
+        {
+          "type": "string",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "GetReturnBool",
+      "funcName": "GetReturnBool",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "bool"
+      }
+    },
+    {
+      "name": "GetReturnInt8",
+      "funcName": "GetReturnInt8",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "int8"
+      }
+    },
+    {
+      "name": "GetReturnUInt8",
+      "funcName": "GetReturnUInt8",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "uint8"
+      }
+    },
+    {
+      "name": "GetReturnInt16",
+      "funcName": "GetReturnInt16",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "int16"
+      }
+    },
+    {
+      "name": "GetReturnUInt16",
+      "funcName": "GetReturnUInt16",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "uint16"
+      }
+    },
+    {
+      "name": "GetReturnInt32",
+      "funcName": "GetReturnInt32",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "int32"
+      }
+    },
+    {
+      "name": "GetReturnUInt32",
+      "funcName": "GetReturnUInt32",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "uint32"
+      }
+    },
+    {
+      "name": "GetReturnInt64",
+      "funcName": "GetReturnInt64",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "int64"
+      }
+    },
+    {
+      "name": "GetReturnUInt64",
+      "funcName": "GetReturnUInt64",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "uint64"
+      }
+    },
+    {
+      "name": "GetReturnFloat",
+      "funcName": "GetReturnFloat",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "float"
+      }
+    },
+    {
+      "name": "GetReturnDouble",
+      "funcName": "GetReturnDouble",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "double"
+      }
+    },
+    {
+      "name": "GetReturnPointer",
+      "funcName": "GetReturnPointer",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
+      }
+    },
+    {
+      "name": "GetReturnString",
+      "funcName": "GetReturnString",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        }
+      ],
+      "retType": {
+        "type": "string"
+      }
+    },
+    {
+      "name": "SetReturnBool",
+      "funcName": "SetReturnBool",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "bool",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnInt8",
+      "funcName": "SetReturnInt8",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "int8",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnUInt8",
+      "funcName": "SetReturnUInt8",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "uint8",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnInt16",
+      "funcName": "SetReturnInt16",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "int16",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnUInt16",
+      "funcName": "SetReturnUInt16",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "uint16",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnInt32",
+      "funcName": "SetReturnInt32",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "int32",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnUInt32",
+      "funcName": "SetReturnUInt32",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "uint32",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnInt64",
+      "funcName": "SetReturnInt64",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "int64",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnUInt64",
+      "funcName": "SetReturnUInt64",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "uint64",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnFloat",
+      "funcName": "SetReturnFloat",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "float",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnDouble",
+      "funcName": "SetReturnDouble",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "double",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnPointer",
+      "funcName": "SetReturnPointer",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "ptr64",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    },
+    {
+      "name": "SetReturnString",
+      "funcName": "SetReturnString",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "ret"
+        },
+        {
+          "type": "string",
+          "name": "value"
+        }
+      ],
+      "retType": {
+        "type": "void"
+      }
+    }
+  ]
+}
