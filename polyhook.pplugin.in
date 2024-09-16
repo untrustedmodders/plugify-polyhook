@@ -212,6 +212,10 @@
           "name": "hook"
         },
         {
+          "type": "bool",
+          "name": "post"
+        },
+        {
           "type": "function",
           "name": "handler",
           "prototype": {
@@ -219,11 +223,15 @@
             "funcName": "CallbackHandler",
             "paramTypes": [
               {
+                "type": "bool",
+                "name": "post"
+              },
+              {
                 "type": "ptr64",
                 "name": "params"
               },
               {
-                "type": "int32",
+                "type": "uint8",
                 "name": "count"
               },
               {
@@ -232,7 +240,7 @@
               }
             ],
             "retType": {
-              "type": "void"
+              "type": "uint8"
             }
           }
         }
@@ -250,6 +258,10 @@
           "name": "hook"
         },
         {
+          "type": "bool",
+          "name": "post"
+        },
+        {
           "type": "function",
           "name": "handler",
           "prototype": {
@@ -257,11 +269,15 @@
             "funcName": "CallbackHandler",
             "paramTypes": [
               {
+                "type": "bool",
+                "name": "post"
+              },
+              {
                 "type": "ptr64",
                 "name": "params"
               },
               {
-                "type": "int32",
+                "type": "uint8",
                 "name": "count"
               },
               {
@@ -270,7 +286,7 @@
               }
             ],
             "retType": {
-              "type": "void"
+              "type": "uint8"
             }
           }
         }
@@ -288,6 +304,10 @@
           "name": "hook"
         },
         {
+          "type": "bool",
+          "name": "post"
+        },
+        {
           "type": "function",
           "name": "handler",
           "prototype": {
@@ -295,11 +315,15 @@
             "funcName": "CallbackHandler",
             "paramTypes": [
               {
+                "type": "bool",
+                "name": "post"
+              },
+              {
                 "type": "ptr64",
                 "name": "params"
               },
               {
-                "type": "int32",
+                "type": "uint8",
                 "name": "count"
               },
               {
@@ -308,7 +332,7 @@
               }
             ],
             "retType": {
-              "type": "void"
+              "type": "uint8"
             }
           }
         }

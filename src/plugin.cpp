@@ -1,22 +1,36 @@
-#include "plugin.h"
+#include "plugin.hpp"
 
 PLH::PolyHookPlugin g_polyHookPlugin;
 EXPOSE_PLUGIN(PLUGIN_API, &g_polyHookPlugin)
 
-static PLH::ReturnAction GlobalCallback(PLH::Callback* callback, const PLH::Callback::Parameters* params, const uint8_t count, const PLH::Callback::ReturnValue* ret) {
+static PLH::ReturnFlag GlobalCallback(PLH::Callback* callback, PLH::CallbackType type, const PLH::Callback::Parameters* params, uint8_t count, const PLH::Callback::ReturnValue* ret) {
 	PLH::ReturnAction returnAction = PLH::ReturnAction::Ignored;
 
-	// TODO: Probably not thread safe
+	// TODO: We need to lock callbacks from modifications if we use them
 
-	const auto& callbacks = callback->getCallbacks();
+	const auto& callbacks = callback->getCallbacks(type);
 	for (const auto& cb : callbacks) {
-		PLH::ReturnAction result = cb(params, count, ret);
+		PLH::ReturnAction result = cb(type, params, count, ret);
 		if (result > returnAction)
 			returnAction = result;
 	}
 
-	return returnAction;
+	PLH::ReturnFlag state = PLH::ReturnFlag::Default;
+	if (type == PLH::CallbackType::Pre) {
+		if (!callback->areCallbacksRegistered(PLH::CallbackType::Post)) {
+			state |= PLH::ReturnFlag::NoPost;
+		}
+		if (returnAction >= PLH::ReturnAction::Override) {
+			state |= PLH::ReturnFlag::Override;
+			if (returnAction == PLH::ReturnAction::Supercede) {
+				state |= PLH::ReturnFlag::Supercede;
+			}
+		}
+	}
+	return state;
 }
+
+#include <dlfcn.h>
 
 PLH::Callback* PLH::PolyHookPlugin::hookDetour(void* pFunc, DataType returnType, const std::vector<DataType>& arguments) {
 	if (!pFunc)
@@ -35,7 +49,7 @@ PLH::Callback* PLH::PolyHookPlugin::hookDetour(void* pFunc, DataType returnType,
 	auto callback = std::make_unique<Callback>();
 	uint64_t JIT = callback->getJitFunc(returnType, arguments, asmjit::Arch::kHost, &GlobalCallback);
 
-	auto detour = std::make_unique<NatDetour>((uintptr_t)pFunc, JIT, callback->getTrampolineHolder());
+	auto detour = std::make_unique<NatDetour>((uint64_t)pFunc, JIT, callback->getTrampolineHolder());
 	if (!detour->hook())
 		return nullptr;
 
@@ -69,7 +83,17 @@ PLH::Callback* PLH::PolyHookPlugin::hookVirtual(void* pClass, int index, DataTyp
 	if (!vtable->hook())
 		return nullptr;
 
-	*callback->getTrampolineHolder() = origVFuncs[index];
+	uint64_t origVFunc = origVFuncs[index];
+	*callback->getTrampolineHolder() = origVFunc;
+
+	// Step 1: Load the shared library
+	/*void* handle = dlopen("/home/qubka/.steam/cs2/game/csgo/addons/plugify/bin/linuxsteamrt64/libplugify.so", RTLD_LAZY);
+	if (handle != nullptr) {
+		using SourceHookPatchFunc = void (*)(uint64_t, uint64_t*);
+		SourceHookPatchFunc SourceHookPatch = (SourceHookPatchFunc) dlsym(handle, "Plugify_SourceHookPatch");
+
+		SourceHookPatch(origVFunc, callback->getCallbackHolder());
+	}*/
 
 	void* key = m_vtables.emplace(pClass, std::move(vtable)).first->second.get();
 	return m_callbacks.emplace(std::pair{key, index}, std::move(callback)).first->second.get();
@@ -190,7 +214,7 @@ void PLH::PolyHookPlugin::unhookAllVirtual(void* pClass) {
 int PLH::PolyHookPlugin::getVTableIndex(void* pFunc) const {
 	constexpr size_t size = 12;
 
-	MemoryProtector protector((uintptr_t)pFunc, size, R, *(MemAccessor*)this);
+	MemoryProtector protector((uint64_t)pFunc, size, R, *(MemAccessor*)this);
 
 #if defined(__GNUC__) || defined(__clang__)
 	struct GCC_MemFunPtr {
@@ -248,7 +272,7 @@ int PLH::PolyHookPlugin::getVTableIndex(void* pFunc) const {
 			// Check where it'd jump
 			addr += 5 /*size of the instruction*/ + *(uint32_t*)(addr + 1);
 
-			protector = std::make_unique<MemoryProtector>((uintptr_t)addr, size, R, *(MemAccessor*)this);
+			protector = std::make_unique<MemoryProtector>((uint64_t)addr, size, R, *(MemAccessor*)this);
 		}
 
 		bool ok = false;
@@ -347,18 +371,18 @@ PLUGIN_API void HookAllVirtual(void* pClass) {
 }
 
 extern "C"
-PLUGIN_API bool AddCallback(PLH::Callback* callback, PLH::Callback::tUserCallback handler) {
-	return callback->addCallback(handler);
+PLUGIN_API bool AddCallback(PLH::Callback* callback, PLH::CallbackType type, PLH::Callback::CallbackHandler handler) {
+	return callback->addCallback(type, handler);
 }
 
 extern "C"
-PLUGIN_API bool RemoveCallback(PLH::Callback* callback, PLH::Callback::tUserCallback handler) {
-	return callback->removeCallback(handler);
+PLUGIN_API bool RemoveCallback(PLH::Callback* callback, PLH::CallbackType type, PLH::Callback::CallbackHandler handler) {
+	return callback->removeCallback(type, handler);
 }
 
 extern "C"
-PLUGIN_API bool IsCallbackRegistered(PLH::Callback* callback, PLH::Callback::tUserCallback handler) {
-	return callback->isCallbackRegistered(handler);
+PLUGIN_API bool IsCallbackRegistered(PLH::Callback* callback, PLH::CallbackType type, PLH::Callback::CallbackHandler handler) {
+	return callback->isCallbackRegistered(type, handler);
 }
 
 extern "C"

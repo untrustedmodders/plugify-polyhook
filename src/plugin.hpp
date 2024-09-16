@@ -2,7 +2,7 @@
 
 #include <plugify/cpp_plugin.h>
 #include <plugin_export.h>
-#include "callback.h"
+#include "callback.hpp"
 
 #include <polyhook2/Detour/NatDetour.hpp>
 #include <polyhook2/Tests/TestEffectTracker.hpp>
@@ -13,7 +13,7 @@
 #include <unordered_map>
 
 namespace PLH {
-	class PolyHookPlugin : public plg::IPluginEntry, public MemAccessor {
+	class PolyHookPlugin final : public plg::IPluginEntry, public MemAccessor {
 	public:
 		PolyHookPlugin() = default;
 		~PolyHookPlugin() override = default;

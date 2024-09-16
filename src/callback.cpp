@@ -1,4 +1,4 @@
-#include "callback.h"
+#include "callback.hpp"
 
 #include "polyhook2/MemProtector.hpp"
 
@@ -36,12 +36,26 @@ asmjit::TypeId PLH::Callback::getTypeId(DataType type) {
 		case DataType::Pointer:
 		case DataType::String:
 		case DataType::WString:
+		case DataType::Matrix4x4:
 			return asmjit::TypeId::kUIntPtr;
+		case DataType::Vector2:
+#if _WIN32
+			return asmjit::TypeId::kInt64;
+#else
+			return asmjit::TypeId::kFloat64;
+#endif
+		case DataType::Vector3:
+		case DataType::Vector4:
+#if _WIN32
+			return TypeId::kUIntPtr;
+#else
+		return asmjit::TypeId::kFloat32x4;
+#endif
 	}
 	return asmjit::TypeId::kVoid;
 }
 
-uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmjit::Arch arch, const PLH::Callback::tMainCallback callback) {;
+uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmjit::Arch arch, const PLH::Callback::CallbackEntry callback) {
 	/*AsmJit is smart enough to track register allocations and will forward
 	  the proper registers the right values and fixup any it dirtied earlier.
 	  This can only be done if it knows the signature, and ABI, so we give it 
@@ -67,19 +81,25 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	asmjit::x86::Compiler cc(&code);            
 	asmjit::FuncNode* func = cc.addFunc(sig);              
 
-	asmjit::StringLogger log;
+	/*asmjit::StringLogger log;
 	auto kFormatFlags =
 			asmjit::FormatFlags::kMachineCode | asmjit::FormatFlags::kExplainImms | asmjit::FormatFlags::kRegCasts
-			| asmjit::FormatFlags::kHexImms     | asmjit::FormatFlags::kHexOffsets  | asmjit::FormatFlags::kPositions;
+			| asmjit::FormatFlags::kHexImms | asmjit::FormatFlags::kHexOffsets  | asmjit::FormatFlags::kPositions;
 	
 	log.addFlags(kFormatFlags);
-	code.setLogger(&log);
+	code.setLogger(&log);*/
 	
 	// too small to really need it
 	func->frame().resetPreservedFP();
-	
+
+	// Create labels
+	asmjit::Label supercede = cc.newLabel();
+	asmjit::Label override = cc.newLabel();
+	asmjit::Label noPost = cc.newLabel();
+
 	// map argument slots to registers, following abi.
 	std::vector<asmjit::x86::Reg> argRegisters;
+	argRegisters.reserve( sig.argCount());
 	for (uint8_t argIdx = 0; argIdx < sig.argCount(); argIdx++) {
 		const auto argType = sig.args()[argIdx];
 
@@ -94,23 +114,52 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 		}
 
 		func->setArg(argIdx, arg);
-		argRegisters.push_back(arg);
+		argRegisters.push_back(std::move(arg));
 	}
-  
+
+#if _WIN32
+	uint32_t retSize = (uint32_t)(sizeof(uint64_t));
+#else
+	bool isPod = asmjit::TypeUtils::isVec128(sig.ret());
+	bool isIntPod = asmjit::TypeUtils::isBetween(sig.ret(), asmjit::TypeId::kInt8x16, asmjit::TypeId::kUInt64x2);
+	bool isFloatPod = asmjit::TypeUtils::isBetween(sig.ret(), asmjit::TypeId::kFloat32x4, asmjit::TypeId::kFloat64x2);
+	uint32_t retSize = (uint32_t)(sizeof(uint64_t) * (isPod ? 2 : 1));
+#endif
+
+	std::vector<asmjit::x86::Reg> retRegisters;
+	retRegisters.reserve(2);
+	if (sig.hasRet()) {
+		if (asmjit::TypeUtils::isInt(sig.ret())) {
+			retRegisters.push_back(cc.newUIntPtr());
+		}
+#if !_WIN32
+		/*else if (isIntPod) {
+			retRegisters.push_back(cc.newUIntPtr());
+			retRegisters.push_back(cc.newUIntPtr());
+		} else if (isFloatPod) {
+			retRegisters.push_back(cc.newXmm());
+			retRegisters.push_back(cc.newXmm());
+		}*/
+#endif
+		else {
+			retRegisters.push_back(cc.newXmm());
+		}
+	}
+
 	// setup the stack structure to hold arguments for user callback
 	uint32_t stackSize = (uint32_t)(sizeof(uint64_t) * sig.argCount());
 	asmjit::x86::Mem argsStack = cc.newStack(stackSize, 16);
-	asmjit::x86::Mem argsStackIdx(argsStack);               
+	asmjit::x86::Mem argsStackIdx(argsStack);
 
-	// assigns some register as index reg 
+	// assigns some register as index reg
 	asmjit::x86::Gp i = cc.newUIntPtr();
 
 	// stackIdx <- stack[i].
-	argsStackIdx.setIndex(i);                   
+	argsStackIdx.setIndex(i);
 
 	// r/w are sizeof(uint64_t) width now
 	argsStackIdx.setSize(sizeof(uint64_t));
-	
+
 	// set i = 0
 	cc.mov(i, 0);
 	//// mov from arguments registers into the stack structure
@@ -135,6 +184,10 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	asmjit::x86::Gp argCallback = cc.newUIntPtr("argCallback");
 	cc.mov(argCallback, this);
 
+	// fill reg to pass struct arg type to callback
+	asmjit::x86::Gp argType = cc.newUInt8();
+	cc.mov(argType, CallbackType::Pre);
+
 	// get pointer to stack structure and pass it to the user callback
 	asmjit::x86::Gp argStruct = cc.newUIntPtr("argStruct");
 	cc.lea(argStruct, argsStack);
@@ -144,41 +197,41 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	cc.mov(argCountParam, (uint8_t)sig.argCount());
 
 	// create buffer for ret val
-	asmjit::x86::Mem retStack = cc.newStack(sizeof(uint64_t), 16);
+	asmjit::x86::Mem retStack = cc.newStack(retSize, 16);
 	asmjit::x86::Gp retStruct = cc.newUIntPtr("retStruct");
 	cc.lea(retStruct, retStack);
 
 	// create value for function return
 	asmjit::x86::Gp retValue = cc.newUInt8();
 
-	// Create label for skip original function
-	asmjit::Label override = cc.newNamedLabel("override");
+	asmjit::InvokeNode* invokePreNode;
 
-	asmjit::InvokeNode* invokeNode;
-	cc.invoke(&invokeNode,
+	// Call pre callback
+	cc.invoke(&invokePreNode,
 			  (uint64_t)callback,
-			  asmjit::FuncSignature::build<ReturnAction, Callback*, Parameters*, uint8_t, ReturnValue*>()
+			  asmjit::FuncSignature::build<ReturnFlag, Callback*, CallbackType, Parameters*, uint8_t, ReturnValue*>()
 	);
 
 	// call to user provided function (use ABI of host compiler)
-	invokeNode->setArg(0, argCallback);
-	invokeNode->setArg(1, argStruct);
-	invokeNode->setArg(2, argCountParam);
-	invokeNode->setArg(3, retStruct);
-	invokeNode->setRet(0, retValue);
+	invokePreNode->setArg(0, argCallback);
+	invokePreNode->setArg(1, argType);
+	invokePreNode->setArg(2, argStruct);
+	invokePreNode->setArg(3, argCountParam);
+	invokePreNode->setArg(4, retStruct);
+	invokePreNode->setRet(0, retValue);
 
-	cc.cmp(retValue, ReturnAction::Supercede);
-	cc.je(override);
+	cc.test(retValue, ReturnFlag::Supercede);
+	cc.jnz(supercede);
 
 	// mov from arguments stack structure into regs
 	cc.mov(i, 0); // reset idx
-	for (uint8_t arg_idx = 0; arg_idx < sig.argCount(); arg_idx++) {
-		const auto argType = sig.args()[arg_idx];
+	for (uint8_t argIdx = 0; argIdx < sig.argCount(); argIdx++) {
+		const auto argType = sig.args()[argIdx];
 
 		if (asmjit::TypeUtils::isInt(argType)) {
-			cc.mov(argRegisters.at(arg_idx).as<asmjit::x86::Gp>(), argsStackIdx);
+			cc.mov(argRegisters.at(argIdx).as<asmjit::x86::Gp>(), argsStackIdx);
 		} else if (asmjit::TypeUtils::isFloat(argType)) {
-			cc.movq(argRegisters.at(arg_idx).as<asmjit::x86::Xmm>(), argsStackIdx);
+			cc.movq(argRegisters.at(argIdx).as<asmjit::x86::Xmm>(), argsStackIdx);
 		} else {
 			//Log::log("Parameters wider than 64bits not supported", ErrorLevel::SEV);
 			return 0;
@@ -190,7 +243,7 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 
 	// deref the trampoline ptr (holder must live longer, must be concrete reg since push later)
 	asmjit::x86::Gp origPtr = cc.zbx();
-	cc.mov(origPtr, (uintptr_t)getTrampolineHolder());
+	cc.mov(origPtr, getTrampolineHolder());
 	cc.mov(origPtr, asmjit::x86::ptr(origPtr));
 
 	asmjit::InvokeNode* origInvokeNode;
@@ -198,21 +251,126 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	for (uint8_t argIdx = 0; argIdx < sig.argCount(); argIdx++) {
 		origInvokeNode->setArg(argIdx, argRegisters.at(argIdx));
 	}
+	for (size_t retIdx = 0; retIdx < retRegisters.size(); retIdx++) {
+		origInvokeNode->setRet(retIdx, retRegisters[retIdx]);
+	}
 
-	// this code will be executed if a callback returns Supercede
-	cc.bind(override);
-	
 	if (sig.hasRet()) {
 		asmjit::x86::Mem retStackIdx(retStack);
 		retStackIdx.setSize(sizeof(uint64_t));
 		if (asmjit::TypeUtils::isInt(sig.ret())) {
-			asmjit::x86::Gp tmp2 = cc.newUIntPtr();
-			cc.mov(tmp2, retStackIdx);
-			cc.ret(tmp2);
+			cc.mov(retStackIdx, retRegisters.at(0).as<asmjit::x86::Gp>());
+		}
+#if !_WIN32
+		/*else if (isIntPod) {
+			asmjit::x86::Mem retStackIdxUpper(retStack);
+			retStackIdxUpper.addOffset(sizeof(uint64_t));
+			retStackIdxUpper.setSize(sizeof(uint64_t));
+
+			cc.mov(retStackIdx, retRegisters.at(0).as<asmjit::x86::Gp>());
+			cc.mov(retStackIdxUpper, retRegisters.at(1).as<asmjit::x86::Gp>());
+		} else if (isFloatPod) {
+			asmjit::x86::Mem retStackIdxUpper(retStack);
+			retStackIdxUpper.addOffset(sizeof(uint64_t));
+			retStackIdxUpper.setSize(sizeof(uint64_t));
+
+			cc.movq(retStackIdx, retRegisters.at(0).as<asmjit::x86::Xmm>());
+			cc.movq(retStackIdxUpper, retRegisters.at(1).as<asmjit::x86::Xmm>());
+		}*/
+#endif
+		else {
+			cc.movq(retStackIdx, retRegisters.at(0).as<asmjit::x86::Xmm>());
+		}
+	}
+
+	// this code will be executed if a callback returns Supercede
+	cc.bind(supercede);
+
+	cc.test(retValue, ReturnFlag::NoPost);
+	cc.jnz(noPost);
+
+	cc.mov(argType, CallbackType::Post);
+
+	asmjit::InvokeNode* invokePostNode;
+
+	cc.invoke(&invokePostNode,
+			  (uint64_t)callback,
+			  asmjit::FuncSignature::build<ReturnFlag, Callback*, CallbackType, Parameters*, uint8_t, ReturnValue*>()
+	);
+
+	// call to user provided function (use ABI of host compiler)
+	invokePostNode->setArg(0, argCallback);
+	invokePostNode->setArg(1, argType);
+	invokePostNode->setArg(2, argStruct);
+	invokePostNode->setArg(3, argCountParam);
+	invokePostNode->setArg(4, retStruct);
+	//invokePostNode->setRet(0, retValue);
+
+	// mov from arguments stack structure into regs
+	cc.mov(i, 0); // reset idx
+	for (uint8_t argIdx = 0; argIdx < sig.argCount(); argIdx++) {
+		const auto argType = sig.args()[argIdx];
+
+		if (asmjit::TypeUtils::isInt(argType)) {
+			cc.mov(argRegisters.at(argIdx).as<asmjit::x86::Gp>(), argsStackIdx);
+		} else if (asmjit::TypeUtils::isFloat(argType)) {
+			cc.movq(argRegisters.at(argIdx).as<asmjit::x86::Xmm>(), argsStackIdx);
 		} else {
-			asmjit::x86::Xmm tmp2 = cc.newXmm();
-			cc.movq(tmp2, retStackIdx);
-			cc.ret(tmp2);
+			//Log::log("Parameters wider than 64bits not supported", ErrorLevel::SEV);
+			return 0;
+		}
+
+		// next structure slot (+= sizeof(uint64_t))
+		cc.add(i, sizeof(uint64_t));
+	}
+
+	cc.bind(noPost);
+
+	if (sig.hasRet()) {
+		//cc.test(retValue, ReturnFlag::Override);
+		//cc.jnz(override);
+/*
+#if !_WIN32
+		if (isPod) {
+			cc.ret(retRegisters.at(0), retRegisters.at(1));
+		} else
+#endif
+		{
+			cc.ret(retRegisters.at(0));
+		}*/
+
+		//cc.bind(override);
+
+		asmjit::x86::Mem retStackIdx(retStack);
+		retStackIdx.setSize(sizeof(uint64_t));
+		if (asmjit::TypeUtils::isInt(sig.ret())) {
+			asmjit::x86::Gp tmp = cc.newUIntPtr();
+			cc.mov(tmp, retStackIdx);
+			cc.ret(tmp);
+		}
+#if !_WIN32
+		/*else if (isIntPod) {
+			asmjit::x86::Mem retStackIdxUpper(retStack);
+			retStackIdxUpper.addOffset(sizeof(uint64_t));
+			retStackIdxUpper.setSize(sizeof(uint64_t));
+
+			cc.mov(asmjit::x86::rax, retStackIdx);
+			cc.mov(asmjit::x86::rdx, retStackIdxUpper);
+			cc.ret();
+		} else if (isFloatPod) {
+			asmjit::x86::Mem retStackIdxUpper(retStack);
+			retStackIdxUpper.addOffset(sizeof(uint64_t));
+			retStackIdxUpper.setSize(sizeof(uint64_t));
+
+			cc.movq(asmjit::x86::xmm0, retStackIdx);
+			cc.movq(asmjit::x86::xmm1, retStackIdxUpper);
+			cc.ret();
+		}*/
+#endif
+		else {
+			asmjit::x86::Xmm tmp = cc.newXmm();
+			cc.movq(tmp, retStackIdx);
+			cc.ret(tmp);
 		}
 	}
 
@@ -234,9 +392,9 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 		return 0;
 	}
 
-	uint64_t callbackBuf = (uint64_t) m_callbackBuf.get();
+	m_callbackPtr = (uint64_t) m_callbackBuf.get();
 
-	MemoryProtector protector(callbackBuf, size, R | W | X, *this, false);
+	MemoryProtector protector(m_callbackPtr, size, R | W | X, *this, false);
 
 	// if multiple sections, resolve linkage (1 atm)
 	if (code.hasUnresolvedLinks()) {
@@ -244,14 +402,14 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	}
 
 	// Relocate to the base-address of the allocated memory.
-	code.relocateToBase(callbackBuf);
+	code.relocateToBase(m_callbackPtr);
 	code.copyFlattenedData(m_callbackBuf.get(), size);
 
 	//Log::log("JIT Stub:\n" + std::string(log.data()), ErrorLevel::INFO);
-	return callbackBuf;
+	return m_callbackPtr;
 }
 
-uint64_t PLH::Callback::getJitFunc(DataType retType, const std::vector<DataType>& paramTypes, const asmjit::Arch arch, const tMainCallback callback) {
+uint64_t PLH::Callback::getJitFunc(DataType retType, const std::vector<DataType>& paramTypes, const asmjit::Arch arch, const CallbackEntry callback) {
 	asmjit::FuncSignature sig(asmjit::CallConvId::kHost, asmjit::FuncSignature::kNoVarArgs, getTypeId(retType));
 	for (const DataType& type : paramTypes) {
 		sig.addArg(getTypeId(type));
@@ -259,42 +417,73 @@ uint64_t PLH::Callback::getJitFunc(DataType retType, const std::vector<DataType>
 	return getJitFunc(sig, arch, callback);
 }
 
-bool PLH::Callback::addCallback(tUserCallback callback) {
-	auto it = std::find(m_callbacks.begin(), m_callbacks.end(), callback);
-	if (it == m_callbacks.end()) {
-		m_callbacks.push_back(callback);
-		return true;
+template<typename E>
+constexpr auto to_integral(E e) -> std::underlying_type_t<E> {
+	return static_cast<std::underlying_type_t<E>>(e);
+}
+
+bool PLH::Callback::addCallback(const CallbackType type, const CallbackHandler callback) {
+	if (!callback)
+		return false;
+
+	std::vector<CallbackHandler>& callbacks = m_callbacks[to_integral(type)];
+
+	for (const CallbackHandler c : callbacks) {
+		if (c == callback) {
+			return false;
+		}
 	}
+
+	callbacks.push_back(callback);
+	return true;
+}
+
+bool PLH::Callback::removeCallback(const CallbackType type, const CallbackHandler callback) {
+	if (!callback)
+		return false;
+
+	std::vector<CallbackHandler>& callbacks = m_callbacks[to_integral(type)];
+
+	for (size_t i = 0; i < callbacks.size(); i++) {
+		if (callbacks[i] == callback) {
+			callbacks.erase(callbacks.begin() + static_cast<ptrdiff_t>(i));
+			return true;
+		}
+	}
+
 	return false;
 }
 
-bool PLH::Callback::removeCallback(tUserCallback callback) {
-	auto it = std::find(m_callbacks.begin(), m_callbacks.end(), callback);
-	if (it != m_callbacks.end()) {
-		m_callbacks.erase(it);
-		return true;
+bool PLH::Callback::isCallbackRegistered(const CallbackType type, const CallbackHandler callback) const {
+	if (!callback)
+		return false;
+
+	const std::vector<CallbackHandler>& callbacks = m_callbacks[to_integral(type)];
+
+	for (const CallbackHandler c : callbacks) {
+		if (c == callback)
+			return true;
 	}
+
 	return false;
 }
 
-bool PLH::Callback::isCallbackRegistered(tUserCallback callback) {
-	return std::find(m_callbacks.begin(), m_callbacks.end(), callback) != m_callbacks.end();
+bool PLH::Callback::areCallbacksRegistered(const CallbackType type) const {
+	return !m_callbacks[to_integral(type)].empty();
 }
 
-bool PLH::Callback::areCallbacksRegistered() {
-	return !m_callbacks.empty();
+bool PLH::Callback::areCallbacksRegistered() const {
+	return areCallbacksRegistered(CallbackType::Pre) || areCallbacksRegistered(CallbackType::Post);
 }
 
-std::vector<PLH::Callback::tUserCallback>& PLH::Callback::getCallbacks() {
-	return m_callbacks;
+std::vector<PLH::Callback::CallbackHandler>& PLH::Callback::getCallbacks(const CallbackType type) {
+	return m_callbacks[to_integral(type)];
 }
 
 uint64_t* PLH::Callback::getTrampolineHolder() {
 	return &m_trampolinePtr;
 }
 
-PLH::Callback::Callback() : m_trampolinePtr(0) {
-}
-
-PLH::Callback::~Callback() {
+uint64_t* PLH::Callback::getCallbackHolder() {
+	return &m_callbackPtr;
 }
