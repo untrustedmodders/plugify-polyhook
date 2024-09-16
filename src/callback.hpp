@@ -10,6 +10,9 @@
 #include "polyhook2/Enums.hpp"
 #include "polyhook2/MemAccessor.hpp"
 
+#include <array>
+#include <vector>
+
 namespace PLH {
 	enum class DataType : uint8_t {
 		Void,
@@ -26,12 +29,7 @@ namespace PLH {
 		Double,
 		Pointer,
 		String,
-		WString,
-		// TODO: Only support return for now
-		Vector2,
-		Vector3,
-		Vector4,
-		Matrix4x4
+		WString
 	};
 
 	enum class ReturnAction : int32_t {
@@ -49,21 +47,20 @@ namespace PLH {
 	enum class ReturnFlag : uint8_t {
 		Default = 0, ///< Value means this gives no information about return flag.
 		NoPost = 1,
-		Override = 2,
-		Supercede = 4,
+		Supercede = 2,
 	};
 
-	class Callback final : public MemAccessor {
+	class Callback {
 	public:
 		struct Parameters {
 			template<typename T>
 			void setArg(const uint8_t idx, const T val) const {
-				*(T*)getArgPtr(idx) = val;
+				*(T*) getArgPtr(idx) = val;
 			}
 
 			template<typename T>
 			T getArg(const uint8_t idx) const {
-				return *(T*)getArgPtr(idx);
+				return *(T*) getArgPtr(idx);
 			}
 
 			// asm depends on this specific type
@@ -96,16 +93,17 @@ namespace PLH {
 		typedef ReturnFlag (*CallbackEntry)(Callback* callback, CallbackType type, const Parameters* params, uint8_t count, const ReturnValue* ret);
 		typedef ReturnAction (*CallbackHandler)(CallbackType type, const Parameters* params, int count, const ReturnValue* ret);
 
-		Callback() = default;
-		~Callback() override = default;
+		Callback();
+		Callback(Callback&& callback) noexcept;
+		~Callback();
 
 		uint64_t getJitFunc(const asmjit::FuncSignature& sig, asmjit::Arch arch, CallbackEntry callback);
-
 		uint64_t getJitFunc(DataType retType, const std::vector<DataType>& paramTypes, asmjit::Arch arch, CallbackEntry callback);
 
 		uint64_t* getTrampolineHolder();
 		uint64_t* getCallbackHolder();
 		std::vector<CallbackHandler>& getCallbacks(CallbackType type);
+		std::string_view getError() const;
 
 		bool addCallback(CallbackType type, CallbackHandler callback);
 		bool removeCallback(CallbackType type, CallbackHandler callback);
@@ -116,11 +114,15 @@ namespace PLH {
 	private:
 		asmjit::TypeId getTypeId(DataType type);
 
-		std::unique_ptr<char[]> m_callbackBuf; // May be asmjit::JitRuntime ?
 		std::array<std::vector<CallbackHandler>, 2> m_callbacks;
-		uint64_t m_callbackPtr = 0;
-		uint64_t m_trampolinePtr = 0;
+		uint64_t m_functionPtr = 0;
+		union {
+			uint64_t m_trampolinePtr = 0;
+			const char* m_errorCode;
+		};
 	};
+
+	extern std::unique_ptr<asmjit::JitRuntime> g_jitRuntime;
 }
 
 inline PLH::ReturnFlag operator|(PLH::ReturnFlag lhs, PLH::ReturnFlag rhs) noexcept {

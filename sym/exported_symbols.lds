@@ -10,6 +10,7 @@ UnhookVirtualByFunc
 FindDetour
 FindVirtual
 FindVirtualByFunc
+FindOriginalAddr
 UnhookAll
 HookAllVirtual
 AddCallback

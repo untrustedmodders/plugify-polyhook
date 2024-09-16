@@ -182,6 +182,23 @@
       }
     },
     {
+      "name": "FindOriginalAddr",
+      "funcName": "FindOriginalAddr",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "pClass"
+        },
+        {
+          "type": "ptr64",
+          "name": "pAddr"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
+      }
+    },
+    {
       "name": "UnhookAll",
       "funcName": "UnhookAll",
       "paramTypes": [

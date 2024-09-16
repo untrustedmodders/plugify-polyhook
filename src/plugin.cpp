@@ -3,6 +3,8 @@
 PLH::PolyHookPlugin g_polyHookPlugin;
 EXPOSE_PLUGIN(PLUGIN_API, &g_polyHookPlugin)
 
+std::unique_ptr<asmjit::JitRuntime> PLH::g_jitRuntime;
+
 static PLH::ReturnFlag GlobalCallback(PLH::Callback* callback, PLH::CallbackType type, const PLH::Callback::Parameters* params, uint8_t count, const PLH::Callback::ReturnValue* ret) {
 	PLH::ReturnAction returnAction = PLH::ReturnAction::Ignored;
 
@@ -15,22 +17,66 @@ static PLH::ReturnFlag GlobalCallback(PLH::Callback* callback, PLH::CallbackType
 			returnAction = result;
 	}
 
+	/*
+	*if (type == CallbackType::Post) {
+		ReturnAction lastPreReturnAction = m_lastPreReturnAction.back();
+		m_lastPreReturnAction.pop_back();
+		if (lastPreReturnAction >= ReturnAction::Override)
+			m_callingConvention->restoreReturnValue(m_registers);
+		if (lastPreReturnAction < ReturnAction::Supercede)
+			m_callingConvention->restoreCallArguments(m_registers);
+	}
+
+	ReturnAction returnAction = ReturnAction::Ignored;
+	auto it = m_handlers.find(type);
+	if (it == m_handlers.end()) {
+		// still save the arguments for the post hook even if there
+		// is no pre-handler registered.
+		if (type == CallbackType::Pre) {
+			m_lastPreReturnAction.push_back(returnAction);
+			m_callingConvention->saveCallArguments(m_registers);
+		}
+		return returnAction;
+	}
+
+	const std::vector<CallbackHandler>& callbacks = it->second;
+
+	for (const CallbackHandler callback : callbacks) {
+		ReturnAction result = callback(type, *this);
+		if (result > returnAction)
+			returnAction = result;
+	}
+
+	if (type == CallbackType::Pre) {
+		m_lastPreReturnAction.push_back(returnAction);
+		if (returnAction >= ReturnAction::Override)
+			m_callingConvention->saveReturnValue(m_registers);
+		if (returnAction < ReturnAction::Supercede)
+			m_callingConvention->saveCallArguments(m_registers);
+	}
+
+	return returnAction;
+	 */
+
 	PLH::ReturnFlag state = PLH::ReturnFlag::Default;
 	if (type == PLH::CallbackType::Pre) {
 		if (!callback->areCallbacksRegistered(PLH::CallbackType::Post)) {
 			state |= PLH::ReturnFlag::NoPost;
 		}
-		if (returnAction >= PLH::ReturnAction::Override) {
-			state |= PLH::ReturnFlag::Override;
-			if (returnAction == PLH::ReturnAction::Supercede) {
-				state |= PLH::ReturnFlag::Supercede;
-			}
+		if (returnAction >= PLH::ReturnAction::Supercede) {
+			state |= PLH::ReturnFlag::Supercede;
 		}
 	}
 	return state;
 }
 
-#include <dlfcn.h>
+void PLH::PolyHookPlugin::OnPluginStart() {
+	g_jitRuntime = std::make_unique<asmjit::JitRuntime>();
+}
+
+void PLH::PolyHookPlugin::OnPluginEnd() {
+	g_jitRuntime.reset();
+}
 
 PLH::Callback* PLH::PolyHookPlugin::hookDetour(void* pFunc, DataType returnType, const std::vector<DataType>& arguments) {
 	if (!pFunc)
@@ -47,6 +93,12 @@ PLH::Callback* PLH::PolyHookPlugin::hookDetour(void* pFunc, DataType returnType,
 	}
 
 	auto callback = std::make_unique<Callback>();
+	auto error = callback->getError();
+	if (!error.empty()) {
+		// Log ?
+		return nullptr;
+	}
+
 	uint64_t JIT = callback->getJitFunc(returnType, arguments, asmjit::Arch::kHost, &GlobalCallback);
 
 	auto detour = std::make_unique<NatDetour>((uint64_t)pFunc, JIT, callback->getTrampolineHolder());
@@ -74,6 +126,12 @@ PLH::Callback* PLH::PolyHookPlugin::hookVirtual(void* pClass, int index, DataTyp
 	}
 
 	auto callback = std::make_unique<Callback>();
+	auto error = callback->getError();
+	if (!error.empty()) {
+		// Log ?
+		return nullptr;
+	}
+
 	uint64_t JIT = callback->getJitFunc(returnType, arguments, asmjit::Arch::kHost, &GlobalCallback);
 
 	auto& [redirectMap, origVFuncs] = m_tables[pClass];
@@ -85,15 +143,6 @@ PLH::Callback* PLH::PolyHookPlugin::hookVirtual(void* pClass, int index, DataTyp
 
 	uint64_t origVFunc = origVFuncs[index];
 	*callback->getTrampolineHolder() = origVFunc;
-
-	// Step 1: Load the shared library
-	/*void* handle = dlopen("/home/qubka/.steam/cs2/game/csgo/addons/plugify/bin/linuxsteamrt64/libplugify.so", RTLD_LAZY);
-	if (handle != nullptr) {
-		using SourceHookPatchFunc = void (*)(uint64_t, uint64_t*);
-		SourceHookPatchFunc SourceHookPatch = (SourceHookPatchFunc) dlsym(handle, "Plugify_SourceHookPatch");
-
-		SourceHookPatch(origVFunc, callback->getCallbackHolder());
-	}*/
 
 	void* key = m_vtables.emplace(pClass, std::move(vtable)).first->second.get();
 	return m_callbacks.emplace(std::pair{key, index}, std::move(callback)).first->second.get();
@@ -184,6 +233,19 @@ PLH::Callback* PLH::PolyHookPlugin::findVirtual(void* pClass, int index) const {
 
 PLH::Callback* PLH::PolyHookPlugin::findVirtual(void* pClass, void* pFunc) const {
 	return findVirtual(pClass, getVTableIndex(pFunc));
+}
+
+void* PLH::PolyHookPlugin::findOriginalAddr(void* pClass, void* pAddr) {
+	auto it = m_tables.find(pClass);
+	if (it != m_tables.end()) {
+		auto& [redirectMap, origVFuncs] = it->second;
+		for (const auto& [index, addr] : redirectMap) {
+			if ((void*) addr == pAddr) {
+				return (void*) origVFuncs[index];
+			}
+		}
+	}
+	return nullptr;
 }
 
 void PLH::PolyHookPlugin::unhookAll() {
@@ -293,7 +355,7 @@ int PLH::PolyHookPlugin::getVTableIndex(void* pFunc) const {
 		if (!ok)
 			return -1;
 
-		constexpr int PtrSize = static_cast<int>(sizeof(void*));
+		constexpr int PtrSize = (int)(sizeof(void*));
 
 		if (*addr++ == 0xFF) {
 			if (*addr == 0x60)
@@ -358,6 +420,11 @@ PLUGIN_API PLH::Callback* FindVirtual(void* pClass, int index) {
 extern "C"
 PLUGIN_API PLH::Callback* FindVirtualByFunc(void* pClass, void* pFunc) {
 	return g_polyHookPlugin.findVirtual(pClass, pFunc);
+}
+
+extern "C"
+PLUGIN_API void* FindOriginalAddr(void* pClass, void* pAddr) {
+	return g_polyHookPlugin.findOriginalAddr(pClass, pAddr);
 }
 
 extern "C"
