@@ -1,12 +1,7 @@
 #include "plugin.hpp"
 
-#include <plugify/assembly.h>
-
 PLH::PolyHookPlugin g_polyHookPlugin;
 EXPOSE_PLUGIN(PLUGIN_API, &g_polyHookPlugin)
-
-//using Plugify_SourcePatchedFunc = bool(*)(void*);
-//Plugify_SourcePatchedFunc Plugify_SourcePatched;
 
 std::unique_ptr<asmjit::JitRuntime> PLH::g_jitRuntime;
 
@@ -45,9 +40,6 @@ static ReturnFlag PostCallback(Callback* callback, const Callback::Parameters* p
 
 void PolyHookPlugin::OnPluginStart() {
 	g_jitRuntime = std::make_unique<asmjit::JitRuntime>();
-
-	//plugify::Assembly plugify = plugify::Assembly("plugify", plugify::LoadFlag::Lazy);
-	//Plugify_SourcePatched = plugify.GetFunctionByName("Plugify_SourcePatched").CCast<Plugify_SourcePatchedFunc>();
 }
 
 void PolyHookPlugin::OnPluginEnd() {
@@ -108,7 +100,6 @@ Callback* PolyHookPlugin::hookVirtual(void* pClass, int index, DataType returnTy
 		return nullptr;
 	}
 
-	//bool isPatched = Plugify_SourcePatched && Plugify_SourcePatched(*(uintptr_t**)pClass + index);
 	constexpr bool isPatched = false;
 
 	uint64_t JIT = callback->getJitFunc(returnType, arguments, &PreCallback, &PostCallback);
@@ -116,9 +107,7 @@ Callback* PolyHookPlugin::hookVirtual(void* pClass, int index, DataType returnTy
 	auto& [redirectMap, origVFuncs] = m_tables[pClass];
 	redirectMap[index] = JIT;
 
-	auto vtable = isPatched ?
-		std::unique_ptr<IHook>(new VFuncSwapHook((uint64_t)pClass, redirectMap, &origVFuncs)) :
-		std::unique_ptr<IHook>(new VTableSwapHook((uint64_t)pClass, redirectMap, &origVFuncs));
+	auto vtable = std::make_unique<VTableSwapHook>((uint64_t) pClass, redirectMap, &origVFuncs);
 	if (!vtable->hook())
 		return nullptr;
 
@@ -160,12 +149,9 @@ bool PolyHookPlugin::unhookVirtual(void* pClass, int index) {
 
 	auto it = m_vhooks.find(pClass);
 	if (it != m_vhooks.end()) {
-		bool isPatched = false;
-
 		auto& vtable = it->second;
 		if (vtable->unHook()) {
 			m_callbacks.erase(std::pair{vtable.get(), index});
-			//isPatched = dynamic_cast<VTableSwapHook*>(vtable.get()) == nullptr;
 			m_vhooks.erase(it);
 		}
 
@@ -178,9 +164,7 @@ bool PolyHookPlugin::unhookVirtual(void* pClass, int index) {
 				return true;
 			}
 
-			vtable = isPatched ?
-				std::unique_ptr<IHook>(new VFuncSwapHook((uint64_t)pClass, redirectMap, &origVFuncs)) :
-				std::unique_ptr<IHook>(new VTableSwapHook((uint64_t)pClass, redirectMap, &origVFuncs));
+			vtable = std::make_unique<VTableSwapHook>((uint64_t) pClass, redirectMap, &origVFuncs);
 
 			if (!vtable->hook())
 				return false;

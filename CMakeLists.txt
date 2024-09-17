@@ -31,11 +31,6 @@ include(cmake/compat_format.cmake)
 include(cmake/polyhook.cmake)
 
 #
-# Plugify (For assembly loader only)
-#
-include(cmake/plugify.cmake)
-
-#
 # Plugin
 #
 file(GLOB_RECURSE PLUGIN_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*.cpp")
@@ -43,7 +38,7 @@ file(GLOB_RECURSE PLUGIN_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*.cpp
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE PolyHook_2 plugify::plugify-assembly)
+target_link_libraries(${PROJECT_NAME} PRIVATE PolyHook_2)
 target_include_directories(${PROJECT_NAME} PRIVATE ${PolyHook_2_SOURCE_DIR})
 
 if(MSVC)
