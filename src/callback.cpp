@@ -41,7 +41,7 @@ asmjit::TypeId PLH::Callback::getTypeId(DataType type) {
 	return asmjit::TypeId::kVoid;
 }
 
-uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmjit::Arch arch, const PLH::Callback::CallbackEntry callback) {
+uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmjit::Arch arch, const CallbackEntry pre, const CallbackEntry post) {
 	if (m_functionPtr) {
 		return m_functionPtr;
 	}
@@ -145,13 +145,11 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 		cc.add(i, sizeof(uint64_t));
 	}
 
+	auto cb = asmjit::FuncSignature::build<ReturnFlag, Callback*, Parameters*, uint8_t, ReturnValue*>();
+
 	// get pointer to callback and pass it to the user callback
 	asmjit::x86::Gp argCallback = cc.newUIntPtr("argCallback");
 	cc.mov(argCallback, this);
-
-	// fill reg to pass struct arg type to callback
-	asmjit::x86::Gp argType = cc.newUInt8();
-	cc.mov(argType, CallbackType::Pre);
 
 	// get pointer to stack structure and pass it to the user callback
 	asmjit::x86::Gp argStruct = cc.newUIntPtr("argStruct");
@@ -173,17 +171,13 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	asmjit::InvokeNode* invokePreNode;
 
 	// Call pre callback
-	cc.invoke(&invokePreNode,
-			  (uint64_t)callback,
-			  asmjit::FuncSignature::build<ReturnFlag, Callback*, CallbackType, Parameters*, uint8_t, ReturnValue*>()
-	);
+	cc.invoke(&invokePreNode, (uint64_t)pre, cb);
 
 	// call to user provided function (use ABI of host compiler)
 	invokePreNode->setArg(0, argCallback);
-	invokePreNode->setArg(1, argType);
-	invokePreNode->setArg(2, argStruct);
-	invokePreNode->setArg(3, argCountParam);
-	invokePreNode->setArg(4, retStruct);
+	invokePreNode->setArg(1, argStruct);
+	invokePreNode->setArg(2, argCountParam);
+	invokePreNode->setArg(3, retStruct);
 	invokePreNode->setRet(0, retValue);
 
 	cc.test(retValue, ReturnFlag::Supercede);
@@ -242,21 +236,15 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	cc.test(retValue, ReturnFlag::NoPost);
 	cc.jnz(noPost);
 
-	cc.mov(argType, CallbackType::Post);
-
 	asmjit::InvokeNode* invokePostNode;
 
-	cc.invoke(&invokePostNode,
-			  (uint64_t)callback,
-			  asmjit::FuncSignature::build<ReturnFlag, Callback*, CallbackType, Parameters*, uint8_t, ReturnValue*>()
-	);
+	cc.invoke(&invokePostNode, (uint64_t)post, cb);
 
 	// call to user provided function (use ABI of host compiler)
 	invokePostNode->setArg(0, argCallback);
-	invokePostNode->setArg(1, argType);
-	invokePostNode->setArg(2, argStruct);
-	invokePostNode->setArg(3, argCountParam);
-	invokePostNode->setArg(4, retStruct);
+	invokePostNode->setArg(1, argStruct);
+	invokePostNode->setArg(2, argCountParam);
+	invokePostNode->setArg(3, retStruct);
 	//invokePostNode->setRet(0, retValue);
 
 	// mov from arguments stack structure into regs
@@ -309,12 +297,12 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	return m_functionPtr;
 }
 
-uint64_t PLH::Callback::getJitFunc(DataType retType, const std::vector<DataType>& paramTypes, const asmjit::Arch arch, const CallbackEntry callback) {
+uint64_t PLH::Callback::getJitFunc(const DataType retType, const std::vector<DataType>& paramTypes, const CallbackEntry pre, const CallbackEntry post) {
 	asmjit::FuncSignature sig(asmjit::CallConvId::kHost, asmjit::FuncSignature::kNoVarArgs, getTypeId(retType));
 	for (const DataType& type : paramTypes) {
 		sig.addArg(getTypeId(type));
 	}
-	return getJitFunc(sig, arch, callback);
+	return getJitFunc(sig, asmjit::Arch::kHost, pre, post);
 }
 
 template<typename E>
@@ -325,6 +313,8 @@ constexpr auto to_integral(E e) -> std::underlying_type_t<E> {
 bool PLH::Callback::addCallback(const CallbackType type, const CallbackHandler callback) {
 	if (!callback)
 		return false;
+
+	std::unique_lock lock(m_mutex);
 
 	std::vector<CallbackHandler>& callbacks = m_callbacks[to_integral(type)];
 
@@ -341,6 +331,8 @@ bool PLH::Callback::addCallback(const CallbackType type, const CallbackHandler c
 bool PLH::Callback::removeCallback(const CallbackType type, const CallbackHandler callback) {
 	if (!callback)
 		return false;
+
+	std::unique_lock lock(m_mutex);
 
 	std::vector<CallbackHandler>& callbacks = m_callbacks[to_integral(type)];
 
@@ -376,15 +368,15 @@ bool PLH::Callback::areCallbacksRegistered() const {
 	return areCallbacksRegistered(CallbackType::Pre) || areCallbacksRegistered(CallbackType::Post);
 }
 
-std::vector<PLH::Callback::CallbackHandler>& PLH::Callback::getCallbacks(const CallbackType type) {
-	return m_callbacks[to_integral(type)];
+PLH::Callback::View PLH::Callback::getCallbacks(const CallbackType type) {
+	return { m_callbacks[to_integral(type)], std::shared_lock(m_mutex) };
 }
 
 uint64_t* PLH::Callback::getTrampolineHolder() {
 	return &m_trampolinePtr;
 }
 
-uint64_t* PLH::Callback::getCallbackHolder() {
+uint64_t* PLH::Callback::getFunctionHolder() {
 	return &m_functionPtr;
 }
 
@@ -393,11 +385,6 @@ std::string_view PLH::Callback::getError() const {
 }
 
 PLH::Callback::Callback() {
-}
-
-PLH::Callback::Callback(Callback&& other) noexcept : m_callbacks(std::move(m_callbacks)), m_functionPtr(other.m_functionPtr), m_trampolinePtr(other.m_trampolinePtr) {
-	other.m_functionPtr = 0;
-	other.m_trampolinePtr = 0;
 }
 
 PLH::Callback::~Callback() {

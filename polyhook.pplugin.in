@@ -248,7 +248,7 @@
                 "name": "params"
               },
               {
-                "type": "uint8",
+                "type": "int32",
                 "name": "count"
               },
               {
@@ -257,7 +257,7 @@
               }
             ],
             "retType": {
-              "type": "uint8"
+              "type": "int32"
             }
           }
         }
@@ -294,7 +294,7 @@
                 "name": "params"
               },
               {
-                "type": "uint8",
+                "type": "int32",
                 "name": "count"
               },
               {
@@ -303,7 +303,7 @@
               }
             ],
             "retType": {
-              "type": "uint8"
+              "type": "int32"
             }
           }
         }
@@ -340,7 +340,7 @@
                 "name": "params"
               },
               {
-                "type": "uint8",
+                "type": "int32",
                 "name": "count"
               },
               {
@@ -349,7 +349,7 @@
               }
             ],
             "retType": {
-              "type": "uint8"
+              "type": "int32"
             }
           }
         }
@@ -369,6 +369,19 @@
       ],
       "retType": {
         "type": "bool"
+      }
+    },
+    {
+      "name": "GetCallbackAddr",
+      "funcName": "GetCallbackAddr",
+      "paramTypes": [
+        {
+          "type": "ptr64",
+          "name": "hook"
+        }
+      ],
+      "retType": {
+        "type": "ptr64"
       }
     },
     {

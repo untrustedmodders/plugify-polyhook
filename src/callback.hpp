@@ -5,13 +5,14 @@
 #pragma warning( pop )
 
 #pragma warning( disable : 4200)
-#include "polyhook2/PolyHookOs.hpp"
-#include "polyhook2/ErrorLog.hpp"
 #include "polyhook2/Enums.hpp"
+#include "polyhook2/ErrorLog.hpp"
 #include "polyhook2/MemAccessor.hpp"
+#include "polyhook2/PolyHookOs.hpp"
 
 #include <array>
 #include <vector>
+#include <shared_mutex>
 
 namespace PLH {
 	enum class DataType : uint8_t {
@@ -90,19 +91,20 @@ namespace PLH {
 			volatile uint64_t m_retVal;
 		};
 
-		typedef ReturnFlag (*CallbackEntry)(Callback* callback, CallbackType type, const Parameters* params, uint8_t count, const ReturnValue* ret);
+		typedef ReturnFlag (*CallbackEntry)(Callback* callback, const Parameters* params, uint8_t count, const ReturnValue* ret);
 		typedef ReturnAction (*CallbackHandler)(CallbackType type, const Parameters* params, int count, const ReturnValue* ret);
 
+		using View = std::pair<std::vector<CallbackHandler>&, std::shared_lock<std::shared_mutex>>;
+
 		Callback();
-		Callback(Callback&& callback) noexcept;
 		~Callback();
 
-		uint64_t getJitFunc(const asmjit::FuncSignature& sig, asmjit::Arch arch, CallbackEntry callback);
-		uint64_t getJitFunc(DataType retType, const std::vector<DataType>& paramTypes, asmjit::Arch arch, CallbackEntry callback);
+		uint64_t getJitFunc(const asmjit::FuncSignature& sig, asmjit::Arch arch, CallbackEntry pre, CallbackEntry post);
+		uint64_t getJitFunc(DataType retType, const std::vector<DataType>& paramTypes, CallbackEntry pre, CallbackEntry post);
 
 		uint64_t* getTrampolineHolder();
-		uint64_t* getCallbackHolder();
-		std::vector<CallbackHandler>& getCallbacks(CallbackType type);
+		uint64_t* getFunctionHolder();
+		View getCallbacks(CallbackType type);
 		std::string_view getError() const;
 
 		bool addCallback(CallbackType type, CallbackHandler callback);
@@ -112,9 +114,10 @@ namespace PLH {
 		bool areCallbacksRegistered() const;
 
 	private:
-		asmjit::TypeId getTypeId(DataType type);
+		static asmjit::TypeId getTypeId(DataType type);
 
 		std::array<std::vector<CallbackHandler>, 2> m_callbacks;
+		std::shared_mutex m_mutex;
 		uint64_t m_functionPtr = 0;
 		union {
 			uint64_t m_trampolinePtr = 0;

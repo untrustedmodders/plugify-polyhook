@@ -8,6 +8,7 @@
 #include <polyhook2/Detour/NatDetour.hpp>
 #include <polyhook2/Tests/TestEffectTracker.hpp>
 #include <polyhook2/Virtuals/VTableSwapHook.hpp>
+#include <polyhook2/Virtuals/VFuncSwapHook.hpp>
 #include <polyhook2/PolyHookOsIncludes.hpp>
 
 #include <asmjit/asmjit.h>
@@ -38,15 +39,14 @@ namespace PLH {
 		Callback* findVirtual(void* pClass, void* pFunc) const;
 		Callback* findVirtual(void* pClass, int index) const;
 
-		void* findOriginalAddr(void* pClass, void* pAddr);
-
 		void unhookAll();
 		void unhookAllVirtual(void* pClass);
 
+		void* findOriginalAddr(void* pClass, void* pAddr);
 		int getVTableIndex(void* pFunc) const;
 
 	private:
-		std::map<void*, std::unique_ptr<VTableSwapHook>> m_vtables;
+		std::map<void*, std::unique_ptr<IHook>> m_vhooks;
 		std::map<void*, std::unique_ptr<NatDetour>> m_detours;
 		std::map<std::pair<void*, int>, std::unique_ptr<Callback>> m_callbacks;
 		std::map<void*, std::pair<VFuncMap, VFuncMap>> m_tables;

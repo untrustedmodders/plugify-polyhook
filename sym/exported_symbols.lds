@@ -17,6 +17,7 @@ AddCallback
 RemoveCallback
 IsCallbackRegistered
 AreCallbacksRegistered
+GetCallbackAddr
 GetArgumentBool
 GetArgumentInt8
 GetArgumentUInt8

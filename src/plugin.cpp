@@ -1,84 +1,60 @@
 #include "plugin.hpp"
 
+#include <plugify/assembly.h>
+
 PLH::PolyHookPlugin g_polyHookPlugin;
 EXPOSE_PLUGIN(PLUGIN_API, &g_polyHookPlugin)
 
+//using Plugify_SourcePatchedFunc = bool(*)(void*);
+//Plugify_SourcePatchedFunc Plugify_SourcePatched;
+
 std::unique_ptr<asmjit::JitRuntime> PLH::g_jitRuntime;
 
-static PLH::ReturnFlag GlobalCallback(PLH::Callback* callback, PLH::CallbackType type, const PLH::Callback::Parameters* params, uint8_t count, const PLH::Callback::ReturnValue* ret) {
-	PLH::ReturnAction returnAction = PLH::ReturnAction::Ignored;
+using namespace PLH;
 
-	// TODO: We need to lock callbacks from modifications if we use them
-
-	const auto& callbacks = callback->getCallbacks(type);
-	for (const auto& cb : callbacks) {
-		PLH::ReturnAction result = cb(type, params, count, ret);
-		if (result > returnAction)
-			returnAction = result;
-	}
-
-	/*
-	*if (type == CallbackType::Post) {
-		ReturnAction lastPreReturnAction = m_lastPreReturnAction.back();
-		m_lastPreReturnAction.pop_back();
-		if (lastPreReturnAction >= ReturnAction::Override)
-			m_callingConvention->restoreReturnValue(m_registers);
-		if (lastPreReturnAction < ReturnAction::Supercede)
-			m_callingConvention->restoreCallArguments(m_registers);
-	}
-
+static ReturnFlag PreCallback(Callback* callback, const Callback::Parameters* params, uint8_t count, const Callback::ReturnValue* ret) {
 	ReturnAction returnAction = ReturnAction::Ignored;
-	auto it = m_handlers.find(type);
-	if (it == m_handlers.end()) {
-		// still save the arguments for the post hook even if there
-		// is no pre-handler registered.
-		if (type == CallbackType::Pre) {
-			m_lastPreReturnAction.push_back(returnAction);
-			m_callingConvention->saveCallArguments(m_registers);
-		}
-		return returnAction;
-	}
 
-	const std::vector<CallbackHandler>& callbacks = it->second;
+	auto [callbacks, lock] = callback->getCallbacks(CallbackType::Pre);
 
-	for (const CallbackHandler callback : callbacks) {
-		ReturnAction result = callback(type, *this);
+	for (const auto& cb : callbacks) {
+		ReturnAction result = cb(CallbackType::Pre, params, count, ret);
 		if (result > returnAction)
 			returnAction = result;
 	}
 
-	if (type == CallbackType::Pre) {
-		m_lastPreReturnAction.push_back(returnAction);
-		if (returnAction >= ReturnAction::Override)
-			m_callingConvention->saveReturnValue(m_registers);
-		if (returnAction < ReturnAction::Supercede)
-			m_callingConvention->saveCallArguments(m_registers);
+	ReturnFlag state = ReturnFlag::Default;
+	if (!callback->areCallbacksRegistered(CallbackType::Post)) {
+		state |= ReturnFlag::NoPost;
 	}
-
-	return returnAction;
-	 */
-
-	PLH::ReturnFlag state = PLH::ReturnFlag::Default;
-	if (type == PLH::CallbackType::Pre) {
-		if (!callback->areCallbacksRegistered(PLH::CallbackType::Post)) {
-			state |= PLH::ReturnFlag::NoPost;
-		}
-		if (returnAction >= PLH::ReturnAction::Supercede) {
-			state |= PLH::ReturnFlag::Supercede;
-		}
+	if (returnAction >= ReturnAction::Supercede) {
+		state |= ReturnFlag::Supercede;
 	}
 	return state;
 }
 
-void PLH::PolyHookPlugin::OnPluginStart() {
-	g_jitRuntime = std::make_unique<asmjit::JitRuntime>();
+static ReturnFlag PostCallback(Callback* callback, const Callback::Parameters* params, uint8_t count, const Callback::ReturnValue* ret) {
+	auto [callbacks, lock] = callback->getCallbacks(CallbackType::Post);
+
+	for (const auto& cb : callbacks) {
+		cb(CallbackType::Post, params, count, ret);
+	}
+
+	return ReturnFlag::Default;
 }
 
-void PLH::PolyHookPlugin::OnPluginEnd() {
+void PolyHookPlugin::OnPluginStart() {
+	g_jitRuntime = std::make_unique<asmjit::JitRuntime>();
+
+	//plugify::Assembly plugify = plugify::Assembly("plugify", plugify::LoadFlag::Lazy);
+	//Plugify_SourcePatched = plugify.GetFunctionByName("Plugify_SourcePatched").CCast<Plugify_SourcePatchedFunc>();
+}
+
+void PolyHookPlugin::OnPluginEnd() {
 	g_jitRuntime.reset();
 }
 
-PLH::Callback* PLH::PolyHookPlugin::hookDetour(void* pFunc, DataType returnType, const std::vector<DataType>& arguments) {
+Callback* PolyHookPlugin::hookDetour(void* pFunc, DataType returnType, const std::vector<DataType>& arguments) {
 	if (!pFunc)
 		return nullptr;
 
@@ -99,7 +75,7 @@ PLH::Callback* PLH::PolyHookPlugin::hookDetour(void* pFunc, DataType returnType,
 		return nullptr;
 	}
 
-	uint64_t JIT = callback->getJitFunc(returnType, arguments, asmjit::Arch::kHost, &GlobalCallback);
+	uint64_t JIT = callback->getJitFunc(returnType, arguments, &PreCallback, &PostCallback);
 
 	auto detour = std::make_unique<NatDetour>((uint64_t)pFunc, JIT, callback->getTrampolineHolder());
 	if (!detour->hook())
@@ -109,19 +85,19 @@ PLH::Callback* PLH::PolyHookPlugin::hookDetour(void* pFunc, DataType returnType,
 	return m_callbacks.emplace(std::pair{key, -1}, std::move(callback)).first->second.get();
 }
 
-PLH::Callback* PLH::PolyHookPlugin::hookVirtual(void* pClass, int index, DataType returnType, const std::vector<DataType>& arguments) {
+Callback* PolyHookPlugin::hookVirtual(void* pClass, int index, DataType returnType, const std::vector<DataType>& arguments) {
 	if (!pClass || index == -1)
 		return nullptr;
 
 	std::lock_guard m_lock(m_mutex);
 
-	auto it = m_vtables.find(pClass);
-	if (it != m_vtables.end()) {
+	auto it = m_vhooks.find(pClass);
+	if (it != m_vhooks.end()) {
 		auto it2 = m_callbacks.find(std::pair{it->second.get(), index});
 		if (it2 != m_callbacks.end()) {
 			return it2->second.get();
 		} else {
-			m_vtables.erase(it);
+			m_vhooks.erase(it);
 		}
 	}
 
@@ -132,27 +108,32 @@ PLH::Callback* PLH::PolyHookPlugin::hookVirtual(void* pClass, int index, DataTyp
 		return nullptr;
 	}
 
-	uint64_t JIT = callback->getJitFunc(returnType, arguments, asmjit::Arch::kHost, &GlobalCallback);
+	//bool isPatched = Plugify_SourcePatched && Plugify_SourcePatched(*(uintptr_t**)pClass + index);
+	constexpr bool isPatched = false;
+
+	uint64_t JIT = callback->getJitFunc(returnType, arguments, &PreCallback, &PostCallback);
 
 	auto& [redirectMap, origVFuncs] = m_tables[pClass];
 	redirectMap[index] = JIT;
 
-	auto vtable = std::make_unique<VTableSwapHook>((uint64_t)pClass, redirectMap, &origVFuncs);
+	auto vtable = isPatched ?
+		std::unique_ptr<IHook>(new VFuncSwapHook((uint64_t)pClass, redirectMap, &origVFuncs)) :
+		std::unique_ptr<IHook>(new VTableSwapHook((uint64_t)pClass, redirectMap, &origVFuncs));
 	if (!vtable->hook())
 		return nullptr;
 
 	uint64_t origVFunc = origVFuncs[index];
 	*callback->getTrampolineHolder() = origVFunc;
 
-	void* key = m_vtables.emplace(pClass, std::move(vtable)).first->second.get();
+	void* key = m_vhooks.emplace(pClass, std::move(vtable)).first->second.get();
 	return m_callbacks.emplace(std::pair{key, index}, std::move(callback)).first->second.get();
 }
 
-PLH::Callback* PLH::PolyHookPlugin::hookVirtual(void* pClass, void* pFunc, DataType returnType, const std::vector<DataType>& arguments) {
+Callback* PolyHookPlugin::hookVirtual(void* pClass, void* pFunc, DataType returnType, const std::vector<DataType>& arguments) {
 	return hookVirtual(pClass, getVTableIndex(pFunc), returnType, arguments);
 }
 
-bool PLH::PolyHookPlugin::unhookDetour(void* pFunc) {
+bool PolyHookPlugin::unhookDetour(void* pFunc) {
 	if (!pFunc)
 		return false;
 
@@ -171,18 +152,21 @@ bool PLH::PolyHookPlugin::unhookDetour(void* pFunc) {
 	return false;
 }
 
-bool PLH::PolyHookPlugin::unhookVirtual(void* pClass, int index) {
+bool PolyHookPlugin::unhookVirtual(void* pClass, int index) {
 	if (!pClass || index == -1)
 		return false;
 
 	std::lock_guard m_lock(m_mutex);
 
-	auto it = m_vtables.find(pClass);
-	if (it != m_vtables.end()) {
+	auto it = m_vhooks.find(pClass);
+	if (it != m_vhooks.end()) {
+		bool isPatched = false;
+
 		auto& vtable = it->second;
 		if (vtable->unHook()) {
 			m_callbacks.erase(std::pair{vtable.get(), index});
-			m_vtables.erase(it);
+			//isPatched = dynamic_cast<VTableSwapHook*>(vtable.get()) == nullptr;
+			m_vhooks.erase(it);
 		}
 
 		auto it2 = m_tables.find(pClass);
@@ -194,22 +178,25 @@ bool PLH::PolyHookPlugin::unhookVirtual(void* pClass, int index) {
 				return true;
 			}
 
-			vtable = std::make_unique<VTableSwapHook>((uint64_t)pClass, redirectMap, &origVFuncs);
+			vtable = isPatched ?
+				std::unique_ptr<IHook>(new VFuncSwapHook((uint64_t)pClass, redirectMap, &origVFuncs)) :
+				std::unique_ptr<IHook>(new VTableSwapHook((uint64_t)pClass, redirectMap, &origVFuncs));
+
 			if (!vtable->hook())
 				return false;
 
-			return m_vtables.emplace(pClass, std::move(vtable)).first->second.get();
+			return m_vhooks.emplace(pClass, std::move(vtable)).first->second.get();
 		}
 	}
 
 	return false;
 }
 
-bool PLH::PolyHookPlugin::unhookVirtual(void* pClass, void* pFunc) {
+bool PolyHookPlugin::unhookVirtual(void* pClass, void* pFunc) {
 	return unhookVirtual(pClass, getVTableIndex(pFunc));
 }
 
-PLH::Callback* PLH::PolyHookPlugin::findDetour(void* pFunc) const {
+Callback* PolyHookPlugin::findDetour(void* pFunc) const {
 	auto it = m_detours.find(pFunc);
 	if (it != m_detours.end()) {
 		auto it2 = m_callbacks.find(std::pair{it->second.get(), -1});
@@ -220,9 +207,9 @@ PLH::Callback* PLH::PolyHookPlugin::findDetour(void* pFunc) const {
 	return nullptr;
 }
 
-PLH::Callback* PLH::PolyHookPlugin::findVirtual(void* pClass, int index) const {
-	auto it = m_vtables.find(pClass);
-	if (it != m_vtables.end()) {
+Callback* PolyHookPlugin::findVirtual(void* pClass, int index) const {
+	auto it = m_vhooks.find(pClass);
+	if (it != m_vhooks.end()) {
 		auto it2 = m_callbacks.find(std::pair{it->second.get(), index});
 		if (it2 != m_callbacks.end()) {
 			return it2->second.get();
@@ -231,8 +218,33 @@ PLH::Callback* PLH::PolyHookPlugin::findVirtual(void* pClass, int index) const {
 	return nullptr;
 }
 
-PLH::Callback* PLH::PolyHookPlugin::findVirtual(void* pClass, void* pFunc) const {
+Callback* PolyHookPlugin::findVirtual(void* pClass, void* pFunc) const {
 	return findVirtual(pClass, getVTableIndex(pFunc));
+}
+
+void PolyHookPlugin::unhookAll() {
+	std::lock_guard m_lock(m_mutex);
+
+	m_detours.clear();
+	m_vhooks.clear();
+	m_tables.clear();
+	m_callbacks.clear();
+}
+
+void PolyHookPlugin::unhookAllVirtual(void* pClass) {
+	std::lock_guard m_lock(m_mutex);
+
+	auto it = m_vhooks.find(pClass);
+	if (it != m_vhooks.end()) {
+		auto it2 = m_tables.find(pClass);
+		if (it2 != m_tables.end()) {
+			for (const auto& [index, func] : it2->second.first) {
+				m_callbacks.erase(std::pair{it->second.get(), index});
+			}
+			m_tables.erase(it2);
+		}
+		m_vhooks.erase(it);
+	}
 }
 
 void* PLH::PolyHookPlugin::findOriginalAddr(void* pClass, void* pAddr) {
@@ -248,32 +260,7 @@ void* PLH::PolyHookPlugin::findOriginalAddr(void* pClass, void* pAddr) {
 	return nullptr;
 }
 
-void PLH::PolyHookPlugin::unhookAll() {
-	std::lock_guard m_lock(m_mutex);
-
-	m_detours.clear();
-	m_vtables.clear();
-	m_tables.clear();
-	m_callbacks.clear();
-}
-
-void PLH::PolyHookPlugin::unhookAllVirtual(void* pClass) {
-	std::lock_guard m_lock(m_mutex);
-
-	auto it = m_vtables.find(pClass);
-	if (it != m_vtables.end()) {
-		auto it2 = m_tables.find(pClass);
-		if (it2 != m_tables.end()) {
-			for (const auto& [index, func] : it2->second.first) {
-				m_callbacks.erase(std::pair{it->second.get(), index});
-			}
-			m_tables.erase(it2);
-		}
-		m_vtables.erase(it);
-	}
-}
-
-int PLH::PolyHookPlugin::getVTableIndex(void* pFunc) const {
+int PolyHookPlugin::getVTableIndex(void* pFunc) const {
 	constexpr size_t size = 12;
 
 	MemoryProtector protector((uint64_t)pFunc, size, R, *(MemAccessor*)this);
@@ -378,17 +365,17 @@ int PLH::PolyHookPlugin::getVTableIndex(void* pFunc) const {
 }
 
 extern "C"
-PLUGIN_API PLH::Callback* HookDetour(void* pFunc, PLH::DataType returnType, const std::vector<PLH::DataType>& arguments) {
+PLUGIN_API Callback* HookDetour(void* pFunc, DataType returnType, const std::vector<DataType>& arguments) {
 	return g_polyHookPlugin.hookDetour(pFunc, returnType, arguments);
 }
 
 extern "C"
-PLUGIN_API PLH::Callback* HookVirtual(void* pClass, int index, PLH::DataType returnType, const std::vector<PLH::DataType>& arguments) {
+PLUGIN_API Callback* HookVirtual(void* pClass, int index, DataType returnType, const std::vector<DataType>& arguments) {
 	return g_polyHookPlugin.hookVirtual(pClass, index, returnType, arguments);
 }
 
 extern "C"
-PLUGIN_API PLH::Callback* HookVirtualByFunc(void* pClass, void* pFunc, PLH::DataType returnType, const std::vector<PLH::DataType>& arguments) {
+PLUGIN_API Callback* HookVirtualByFunc(void* pClass, void* pFunc, DataType returnType, const std::vector<DataType>& arguments) {
 	return g_polyHookPlugin.hookVirtual(pClass, pFunc, returnType, arguments);
 }
 
@@ -408,17 +395,17 @@ PLUGIN_API bool UnhookVirtualByFunc(void* pClass, void* pFunc) {
 }
 
 extern "C"
-PLUGIN_API PLH::Callback* FindDetour(void* pFunc) {
+PLUGIN_API Callback* FindDetour(void* pFunc) {
 	return g_polyHookPlugin.findDetour(pFunc);
 }
 
 extern "C"
-PLUGIN_API PLH::Callback* FindVirtual(void* pClass, int index) {
+PLUGIN_API Callback* FindVirtual(void* pClass, int index) {
 	return g_polyHookPlugin.findVirtual(pClass, index);
 }
 
 extern "C"
-PLUGIN_API PLH::Callback* FindVirtualByFunc(void* pClass, void* pFunc) {
+PLUGIN_API Callback* FindVirtualByFunc(void* pClass, void* pFunc) {
 	return g_polyHookPlugin.findVirtual(pClass, pFunc);
 }
 
@@ -438,137 +425,142 @@ PLUGIN_API void HookAllVirtual(void* pClass) {
 }
 
 extern "C"
-PLUGIN_API bool AddCallback(PLH::Callback* callback, PLH::CallbackType type, PLH::Callback::CallbackHandler handler) {
+PLUGIN_API bool AddCallback(Callback* callback, CallbackType type, Callback::CallbackHandler handler) {
 	return callback->addCallback(type, handler);
 }
 
 extern "C"
-PLUGIN_API bool RemoveCallback(PLH::Callback* callback, PLH::CallbackType type, PLH::Callback::CallbackHandler handler) {
+PLUGIN_API bool RemoveCallback(Callback* callback, CallbackType type, Callback::CallbackHandler handler) {
 	return callback->removeCallback(type, handler);
 }
 
 extern "C"
-PLUGIN_API bool IsCallbackRegistered(PLH::Callback* callback, PLH::CallbackType type, PLH::Callback::CallbackHandler handler) {
+PLUGIN_API bool IsCallbackRegistered(Callback* callback, CallbackType type, Callback::CallbackHandler handler) {
 	return callback->isCallbackRegistered(type, handler);
 }
 
 extern "C"
-PLUGIN_API bool AreCallbacksRegistered(PLH::Callback* callback) {
+PLUGIN_API bool AreCallbacksRegistered(Callback* callback) {
 	return callback->areCallbacksRegistered();
 }
 
 extern "C"
-PLUGIN_API bool GetArgumentBool(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<bool>(index); }
-extern "C"
-PLUGIN_API int8_t GetArgumentInt8(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<int8_t>(index); }
-extern "C"
-PLUGIN_API uint8_t GetArgumentUInt8(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<uint8_t>(index); }
-extern "C"
-PLUGIN_API int16_t GetArgumentInt16(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<int16_t>(index); }
-extern "C"
-PLUGIN_API uint16_t GetArgumentUInt16(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<uint16_t>(index); }
-extern "C"
-PLUGIN_API int32_t GetArgumentInt32(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<int32_t>(index); }
-extern "C"
-PLUGIN_API uint32_t GetArgumentUInt32(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<uint32_t>(index); }
-extern "C"
-PLUGIN_API int64_t GetArgumentInt64(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<int64_t>(index); }
-extern "C"
-PLUGIN_API uint64_t GetArgumentUInt64(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<uint64_t>(index); }
-extern "C"
-PLUGIN_API float GetArgumentFloat(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<float>(index); }
-extern "C"
-PLUGIN_API double GetArgumentDouble(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<double>(index); }
-extern "C"
-PLUGIN_API void* GetArgumentPointer(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<void*>(index); }
-extern "C"
-PLUGIN_API const char* GetArgumentString(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<const char*>(index); }
-extern "C"
-PLUGIN_API const wchar_t* GetArgumentWString(const PLH::Callback::Parameters* params, size_t index) { return params->getArg<const wchar_t*>(index); }
+PLUGIN_API void* GetCallbackAddr(Callback* callback) {
+	return (void*) *callback->getFunctionHolder();
+}
 
 extern "C"
-PLUGIN_API void SetArgumentBool(const PLH::Callback::Parameters* params, size_t index, bool value) { return params->setArg(index, value); }
+PLUGIN_API bool GetArgumentBool(const Callback::Parameters* params, size_t index) { return params->getArg<bool>(index); }
 extern "C"
-PLUGIN_API void SetArgumentInt8(const PLH::Callback::Parameters* params, size_t index, int8_t value) { return params->setArg(index, value); }
+PLUGIN_API int8_t GetArgumentInt8(const Callback::Parameters* params, size_t index) { return params->getArg<int8_t>(index); }
 extern "C"
-PLUGIN_API void SetArgumentUInt8(const PLH::Callback::Parameters* params, size_t index, uint8_t value) { return params->setArg(index, value); }
+PLUGIN_API uint8_t GetArgumentUInt8(const Callback::Parameters* params, size_t index) { return params->getArg<uint8_t>(index); }
 extern "C"
-PLUGIN_API void SetArgumentInt16(const PLH::Callback::Parameters* params, size_t index, int16_t value) { return params->setArg(index, value); }
+PLUGIN_API int16_t GetArgumentInt16(const Callback::Parameters* params, size_t index) { return params->getArg<int16_t>(index); }
 extern "C"
-PLUGIN_API void SetArgumentUInt16(const PLH::Callback::Parameters* params, size_t index, uint16_t value) { return params->setArg(index, value); }
+PLUGIN_API uint16_t GetArgumentUInt16(const Callback::Parameters* params, size_t index) { return params->getArg<uint16_t>(index); }
 extern "C"
-PLUGIN_API void SetArgumentInt32(const PLH::Callback::Parameters* params, size_t index, int32_t value) { return params->setArg(index, value); }
+PLUGIN_API int32_t GetArgumentInt32(const Callback::Parameters* params, size_t index) { return params->getArg<int32_t>(index); }
 extern "C"
-PLUGIN_API void SetArgumentUInt32(const PLH::Callback::Parameters* params, size_t index, uint32_t value) { return params->setArg(index, value); }
+PLUGIN_API uint32_t GetArgumentUInt32(const Callback::Parameters* params, size_t index) { return params->getArg<uint32_t>(index); }
 extern "C"
-PLUGIN_API void SetArgumentInt64(const PLH::Callback::Parameters* params, size_t index, int64_t value) { return params->setArg(index, value); }
+PLUGIN_API int64_t GetArgumentInt64(const Callback::Parameters* params, size_t index) { return params->getArg<int64_t>(index); }
 extern "C"
-PLUGIN_API void SetArgumentUInt64(const PLH::Callback::Parameters* params, size_t index, uint64_t value) { return params->setArg(index, value); }
+PLUGIN_API uint64_t GetArgumentUInt64(const Callback::Parameters* params, size_t index) { return params->getArg<uint64_t>(index); }
 extern "C"
-PLUGIN_API void SetArgumentFloat(const PLH::Callback::Parameters* params, size_t index, float value) { return params->setArg(index, value); }
+PLUGIN_API float GetArgumentFloat(const Callback::Parameters* params, size_t index) { return params->getArg<float>(index); }
 extern "C"
-PLUGIN_API void SetArgumentDouble(const PLH::Callback::Parameters* params, size_t index, double value) { return params->setArg(index, value); }
+PLUGIN_API double GetArgumentDouble(const Callback::Parameters* params, size_t index) { return params->getArg<double>(index); }
 extern "C"
-PLUGIN_API void SetArgumentPointer(const PLH::Callback::Parameters* params, size_t index, void* value) { return params->setArg(index, value); }
+PLUGIN_API void* GetArgumentPointer(const Callback::Parameters* params, size_t index) { return params->getArg<void*>(index); }
 extern "C"
-PLUGIN_API void SetArgumentString(const PLH::Callback::Parameters* params, size_t index, const char* value) { return params->setArg(index, value); }
+PLUGIN_API const char* GetArgumentString(const Callback::Parameters* params, size_t index) { return params->getArg<const char*>(index); }
 extern "C"
-PLUGIN_API void SetArgumentWString(const PLH::Callback::Parameters* params, size_t index, const wchar_t* value) { return params->setArg(index, value); }
+PLUGIN_API const wchar_t* GetArgumentWString(const Callback::Parameters* params, size_t index) { return params->getArg<const wchar_t*>(index); }
 
 extern "C"
-PLUGIN_API bool GetReturnBool(const PLH::Callback::ReturnValue* ret) { return ret->getRet<bool>(); }
+PLUGIN_API void SetArgumentBool(const Callback::Parameters* params, size_t index, bool value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API int8_t GetReturnInt8(const PLH::Callback::ReturnValue* ret) { return ret->getRet<int8_t>(); }
+PLUGIN_API void SetArgumentInt8(const Callback::Parameters* params, size_t index, int8_t value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API uint8_t GetReturnUInt8(const PLH::Callback::ReturnValue* ret) { return ret->getRet<uint8_t>(); }
+PLUGIN_API void SetArgumentUInt8(const Callback::Parameters* params, size_t index, uint8_t value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API int16_t GetReturnInt16(const PLH::Callback::ReturnValue* ret) { return ret->getRet<int16_t>(); }
+PLUGIN_API void SetArgumentInt16(const Callback::Parameters* params, size_t index, int16_t value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API uint16_t GetReturnUInt16(const PLH::Callback::ReturnValue* ret) { return ret->getRet<uint16_t>(); }
+PLUGIN_API void SetArgumentUInt16(const Callback::Parameters* params, size_t index, uint16_t value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API int32_t GetReturnInt32(const PLH::Callback::ReturnValue* ret) { return ret->getRet<int32_t>(); }
+PLUGIN_API void SetArgumentInt32(const Callback::Parameters* params, size_t index, int32_t value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API uint32_t GetReturnUInt32(const PLH::Callback::ReturnValue* ret) { return ret->getRet<uint32_t>(); }
+PLUGIN_API void SetArgumentUInt32(const Callback::Parameters* params, size_t index, uint32_t value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API int64_t GetReturnInt64(const PLH::Callback::ReturnValue* ret) { return ret->getRet<int64_t>(); }
+PLUGIN_API void SetArgumentInt64(const Callback::Parameters* params, size_t index, int64_t value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API uint64_t GetReturnUInt64(const PLH::Callback::ReturnValue* ret) { return ret->getRet<uint64_t>(); }
+PLUGIN_API void SetArgumentUInt64(const Callback::Parameters* params, size_t index, uint64_t value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API float GetReturnFloat(const PLH::Callback::ReturnValue* ret) { return ret->getRet<float>(); }
+PLUGIN_API void SetArgumentFloat(const Callback::Parameters* params, size_t index, float value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API double GetReturnDouble(const PLH::Callback::ReturnValue* ret) { return ret->getRet<double>(); }
+PLUGIN_API void SetArgumentDouble(const Callback::Parameters* params, size_t index, double value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API void* GetReturnPointer(const PLH::Callback::ReturnValue* ret) { return ret->getRet<void*>(); }
+PLUGIN_API void SetArgumentPointer(const Callback::Parameters* params, size_t index, void* value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API const char* GetReturnString(const PLH::Callback::ReturnValue* ret) { return ret->getRet<const char*>(); }
+PLUGIN_API void SetArgumentString(const Callback::Parameters* params, size_t index, const char* value) { return params->setArg(index, value); }
 extern "C"
-PLUGIN_API const wchar_t* GetReturnWString(const PLH::Callback::ReturnValue* ret) { return ret->getRet<const wchar_t*>(); }
+PLUGIN_API void SetArgumentWString(const Callback::Parameters* params, size_t index, const wchar_t* value) { return params->setArg(index, value); }
 
 extern "C"
-PLUGIN_API void SetReturnBool(const PLH::Callback::ReturnValue* ret, bool value) { return ret->setRet(value); }
+PLUGIN_API bool GetReturnBool(const Callback::ReturnValue* ret) { return ret->getRet<bool>(); }
 extern "C"
-PLUGIN_API void SetReturnInt8(const PLH::Callback::ReturnValue* ret, int8_t value) { return ret->setRet(value); }
+PLUGIN_API int8_t GetReturnInt8(const Callback::ReturnValue* ret) { return ret->getRet<int8_t>(); }
 extern "C"
-PLUGIN_API void SetReturnUInt8(const PLH::Callback::ReturnValue* ret, uint8_t value) { return ret->setRet(value); }
+PLUGIN_API uint8_t GetReturnUInt8(const Callback::ReturnValue* ret) { return ret->getRet<uint8_t>(); }
 extern "C"
-PLUGIN_API void SetReturnInt16(const PLH::Callback::ReturnValue* ret, int16_t value) { return ret->setRet(value); }
+PLUGIN_API int16_t GetReturnInt16(const Callback::ReturnValue* ret) { return ret->getRet<int16_t>(); }
 extern "C"
-PLUGIN_API void SetReturnUInt16(const PLH::Callback::ReturnValue* ret, uint16_t value) { return ret->setRet(value); }
+PLUGIN_API uint16_t GetReturnUInt16(const Callback::ReturnValue* ret) { return ret->getRet<uint16_t>(); }
 extern "C"
-PLUGIN_API void SetReturnInt32(const PLH::Callback::ReturnValue* ret, int32_t value) { return ret->setRet(value); }
+PLUGIN_API int32_t GetReturnInt32(const Callback::ReturnValue* ret) { return ret->getRet<int32_t>(); }
 extern "C"
-PLUGIN_API void SetReturnUInt32(const PLH::Callback::ReturnValue* ret, uint32_t value) { return ret->setRet(value); }
+PLUGIN_API uint32_t GetReturnUInt32(const Callback::ReturnValue* ret) { return ret->getRet<uint32_t>(); }
 extern "C"
-PLUGIN_API void SetReturnInt64(const PLH::Callback::ReturnValue* ret, int64_t value) { return ret->setRet(value); }
+PLUGIN_API int64_t GetReturnInt64(const Callback::ReturnValue* ret) { return ret->getRet<int64_t>(); }
 extern "C"
-PLUGIN_API void SetReturnUInt64(const PLH::Callback::ReturnValue* ret, uint64_t value) { return ret->setRet(value); }
+PLUGIN_API uint64_t GetReturnUInt64(const Callback::ReturnValue* ret) { return ret->getRet<uint64_t>(); }
 extern "C"
-PLUGIN_API void SetReturnFloat(const PLH::Callback::ReturnValue* ret, float value) { return ret->setRet(value); }
+PLUGIN_API float GetReturnFloat(const Callback::ReturnValue* ret) { return ret->getRet<float>(); }
 extern "C"
-PLUGIN_API void SetReturnDouble(const PLH::Callback::ReturnValue* ret, double value) { return ret->setRet(value); }
+PLUGIN_API double GetReturnDouble(const Callback::ReturnValue* ret) { return ret->getRet<double>(); }
 extern "C"
-PLUGIN_API void SetReturnPointer(const PLH::Callback::ReturnValue* ret, void* value) { return ret->setRet(value); }
+PLUGIN_API void* GetReturnPointer(const Callback::ReturnValue* ret) { return ret->getRet<void*>(); }
 extern "C"
-PLUGIN_API void SetReturnString(const PLH::Callback::ReturnValue* ret, const char* value) { return ret->setRet(value); }
+PLUGIN_API const char* GetReturnString(const Callback::ReturnValue* ret) { return ret->getRet<const char*>(); }
 extern "C"
-PLUGIN_API void SetReturnWString(const PLH::Callback::ReturnValue* ret, const wchar_t* value) { return ret->setRet(value); }
+PLUGIN_API const wchar_t* GetReturnWString(const Callback::ReturnValue* ret) { return ret->getRet<const wchar_t*>(); }
+
+extern "C"
+PLUGIN_API void SetReturnBool(const Callback::ReturnValue* ret, bool value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnInt8(const Callback::ReturnValue* ret, int8_t value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnUInt8(const Callback::ReturnValue* ret, uint8_t value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnInt16(const Callback::ReturnValue* ret, int16_t value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnUInt16(const Callback::ReturnValue* ret, uint16_t value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnInt32(const Callback::ReturnValue* ret, int32_t value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnUInt32(const Callback::ReturnValue* ret, uint32_t value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnInt64(const Callback::ReturnValue* ret, int64_t value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnUInt64(const Callback::ReturnValue* ret, uint64_t value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnFloat(const Callback::ReturnValue* ret, float value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnDouble(const Callback::ReturnValue* ret, double value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnPointer(const Callback::ReturnValue* ret, void* value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnString(const Callback::ReturnValue* ret, const char* value) { return ret->setRet(value); }
+extern "C"
+PLUGIN_API void SetReturnWString(const Callback::ReturnValue* ret, const wchar_t* value) { return ret->setRet(value); }
