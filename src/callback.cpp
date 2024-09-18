@@ -67,10 +67,8 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	  be spoiled and must be manually marked dirty. After endFunc ONLY concrete
 	  physical registers may be inserted as nodes.
 	*/
-	asmjit::CodeHolder code;        
-	auto env = asmjit::Environment::host();
-	env.setArch(arch);
-	code.init(env);
+	asmjit::CodeHolder code;
+	code.init(g_jitRuntime->environment(), g_jitRuntime->cpuFeatures());
 	
 	// initialize function
 	asmjit::x86::Compiler cc(&code);            
@@ -145,7 +143,7 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 		cc.add(i, sizeof(uint64_t));
 	}
 
-	auto cb = asmjit::FuncSignature::build<ReturnFlag, Callback*, Parameters*, uint8_t, ReturnValue*>();
+	auto callbackSig = asmjit::FuncSignature::build<void, Callback*, Parameters*, Property*, Return*>();
 
 	// get pointer to callback and pass it to the user callback
 	asmjit::x86::Gp argCallback = cc.newUIntPtr("argCallback");
@@ -155,32 +153,44 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	asmjit::x86::Gp argStruct = cc.newUIntPtr("argStruct");
 	cc.lea(argStruct, argsStack);
 
-	// fill reg to pass struct arg count to callback
-	asmjit::x86::Gp argCountParam = cc.newUInt8();
-	cc.mov(argCountParam, (uint8_t)sig.argCount());
+	// create buffer for property struct
+	asmjit::x86::Mem propStack = cc.newStack(sizeof(uint64_t), 16);
+	asmjit::x86::Gp propStruct = cc.newUIntPtr("propStruct");
+	cc.lea(propStruct, propStack);
 
-	// create buffer for ret val
-	uint32_t retSize = (uint32_t)(sizeof(uint64_t));
-	asmjit::x86::Mem retStack = cc.newStack(retSize, 16);
+	// create buffer for return struct
+	asmjit::x86::Mem retStack = cc.newStack(sizeof(uint64_t), 16);
 	asmjit::x86::Gp retStruct = cc.newUIntPtr("retStruct");
 	cc.lea(retStruct, retStack);
 
-	// create value for function return
-	asmjit::x86::Gp retValue = cc.newUInt8();
+	{
+		asmjit::x86::Mem propStackIdx(propStack);
+		propStackIdx.setSize(sizeof(uint64_t));
+		Property property{ (int32_t) sig.argCount(), ReturnFlag::Default };
+		cc.mov(propStackIdx, *(int64_t*) &property);
+	}
 
 	asmjit::InvokeNode* invokePreNode;
 
 	// Call pre callback
-	cc.invoke(&invokePreNode, (uint64_t)pre, cb);
+	cc.invoke(&invokePreNode, (uint64_t)pre, callbackSig);
 
 	// call to user provided function (use ABI of host compiler)
 	invokePreNode->setArg(0, argCallback);
 	invokePreNode->setArg(1, argStruct);
-	invokePreNode->setArg(2, argCountParam);
+	invokePreNode->setArg(2, propStruct);
 	invokePreNode->setArg(3, retStruct);
-	invokePreNode->setRet(0, retValue);
 
-	cc.test(retValue, ReturnFlag::Supercede);
+	asmjit::x86::Gp propFlag = cc.newInt32();
+
+	{
+		asmjit::x86::Mem propStackIdx(propStack);
+		propStackIdx.setSize(sizeof(ReturnFlag));
+		propStackIdx.setOffset(sizeof(int32_t));
+		cc.mov(propFlag, propStackIdx);
+	}
+
+	cc.test(propFlag, ReturnFlag::Supercede);
 	cc.jnz(supercede);
 
 	// mov from arguments stack structure into regs
@@ -233,19 +243,18 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 	// this code will be executed if a callback returns Supercede
 	cc.bind(supercede);
 
-	cc.test(retValue, ReturnFlag::NoPost);
+	cc.test(propFlag, ReturnFlag::NoPost);
 	cc.jnz(noPost);
 
 	asmjit::InvokeNode* invokePostNode;
 
-	cc.invoke(&invokePostNode, (uint64_t)post, cb);
+	cc.invoke(&invokePostNode, (uint64_t)post, callbackSig);
 
 	// call to user provided function (use ABI of host compiler)
 	invokePostNode->setArg(0, argCallback);
 	invokePostNode->setArg(1, argStruct);
-	invokePostNode->setArg(2, argCountParam);
+	invokePostNode->setArg(2, propStruct);
 	invokePostNode->setArg(3, retStruct);
-	//invokePostNode->setRet(0, retValue);
 
 	// mov from arguments stack structure into regs
 	cc.mov(i, 0); // reset idx

@@ -45,7 +45,7 @@ namespace PLH {
 		Post  ///< Callback will be executed after the original function
 	};
 
-	enum class ReturnFlag : uint8_t {
+	enum class ReturnFlag : int32_t {
 		Default = 0, ///< Value means this gives no information about return flag.
 		NoPost = 1,
 		Supercede = 2,
@@ -71,11 +71,11 @@ namespace PLH {
 		private:
 			// must be char* for aliasing rules to work when reading back out
 			char* getArgPtr(const uint8_t idx) const {
-				return (char*)&m_arguments + sizeof(uint64_t) * idx;
+				return (char*) &m_arguments + sizeof(uint64_t) * idx;
 			}
 		};
 
-		struct ReturnValue {
+		struct Return {
 			template<typename T>
 			void setRet(const T val) const {
 				*(T*)getRetPtr() = val;
@@ -91,8 +91,13 @@ namespace PLH {
 			volatile uint64_t m_retVal;
 		};
 
-		typedef ReturnFlag (*CallbackEntry)(Callback* callback, const Parameters* params, uint8_t count, const ReturnValue* ret);
-		typedef ReturnAction (*CallbackHandler)(CallbackType type, const Parameters* params, int count, const ReturnValue* ret);
+		struct Property {
+			const int32_t count;
+			ReturnFlag flag;
+		};
+
+		typedef void (*CallbackEntry)(Callback* callback, const Parameters* params, Property* property, const Return* ret);
+		typedef ReturnAction (*CallbackHandler)(CallbackType type, const Parameters* params, int32_t count, const Return* ret);
 
 		using View = std::pair<std::vector<CallbackHandler>&, std::shared_lock<std::shared_mutex>>;
 

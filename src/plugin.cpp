@@ -7,35 +7,31 @@ std::unique_ptr<asmjit::JitRuntime> PLH::g_jitRuntime;
 
 using namespace PLH;
 
-static ReturnFlag PreCallback(Callback* callback, const Callback::Parameters* params, uint8_t count, const Callback::ReturnValue* ret) {
+static void PreCallback(Callback* callback, const Callback::Parameters* params, Callback::Property* property, const Callback::Return* ret) {
 	ReturnAction returnAction = ReturnAction::Ignored;
 
 	auto [callbacks, lock] = callback->getCallbacks(CallbackType::Pre);
 
 	for (const auto& cb : callbacks) {
-		ReturnAction result = cb(CallbackType::Pre, params, count, ret);
+		ReturnAction result = cb(CallbackType::Pre, params, property->count, ret);
 		if (result > returnAction)
 			returnAction = result;
 	}
 
-	ReturnFlag state = ReturnFlag::Default;
 	if (!callback->areCallbacksRegistered(CallbackType::Post)) {
-		state |= ReturnFlag::NoPost;
+		property->flag |= ReturnFlag::NoPost;
 	}
 	if (returnAction >= ReturnAction::Supercede) {
-		state |= ReturnFlag::Supercede;
+		property->flag |= ReturnFlag::Supercede;
 	}
-	return state;
 }
 
-static ReturnFlag PostCallback(Callback* callback, const Callback::Parameters* params, uint8_t count, const Callback::ReturnValue* ret) {
+static void PostCallback(Callback* callback, const Callback::Parameters* params, Callback::Property* property, const Callback::Return* ret) {
 	auto [callbacks, lock] = callback->getCallbacks(CallbackType::Post);
 
 	for (const auto& cb : callbacks) {
-		cb(CallbackType::Post, params, count, ret);
+		cb(CallbackType::Post, params, property->count, ret);
 	}
-
-	return ReturnFlag::Default;
 }
 
 void PolyHookPlugin::OnPluginStart() {
@@ -490,59 +486,59 @@ extern "C"
 PLUGIN_API void SetArgumentWString(const Callback::Parameters* params, size_t index, const wchar_t* value) { return params->setArg(index, value); }
 
 extern "C"
-PLUGIN_API bool GetReturnBool(const Callback::ReturnValue* ret) { return ret->getRet<bool>(); }
+PLUGIN_API bool GetReturnBool(const Callback::Return* ret) { return ret->getRet<bool>(); }
 extern "C"
-PLUGIN_API int8_t GetReturnInt8(const Callback::ReturnValue* ret) { return ret->getRet<int8_t>(); }
+PLUGIN_API int8_t GetReturnInt8(const Callback::Return* ret) { return ret->getRet<int8_t>(); }
 extern "C"
-PLUGIN_API uint8_t GetReturnUInt8(const Callback::ReturnValue* ret) { return ret->getRet<uint8_t>(); }
+PLUGIN_API uint8_t GetReturnUInt8(const Callback::Return* ret) { return ret->getRet<uint8_t>(); }
 extern "C"
-PLUGIN_API int16_t GetReturnInt16(const Callback::ReturnValue* ret) { return ret->getRet<int16_t>(); }
+PLUGIN_API int16_t GetReturnInt16(const Callback::Return* ret) { return ret->getRet<int16_t>(); }
 extern "C"
-PLUGIN_API uint16_t GetReturnUInt16(const Callback::ReturnValue* ret) { return ret->getRet<uint16_t>(); }
+PLUGIN_API uint16_t GetReturnUInt16(const Callback::Return* ret) { return ret->getRet<uint16_t>(); }
 extern "C"
-PLUGIN_API int32_t GetReturnInt32(const Callback::ReturnValue* ret) { return ret->getRet<int32_t>(); }
+PLUGIN_API int32_t GetReturnInt32(const Callback::Return* ret) { return ret->getRet<int32_t>(); }
 extern "C"
-PLUGIN_API uint32_t GetReturnUInt32(const Callback::ReturnValue* ret) { return ret->getRet<uint32_t>(); }
+PLUGIN_API uint32_t GetReturnUInt32(const Callback::Return* ret) { return ret->getRet<uint32_t>(); }
 extern "C"
-PLUGIN_API int64_t GetReturnInt64(const Callback::ReturnValue* ret) { return ret->getRet<int64_t>(); }
+PLUGIN_API int64_t GetReturnInt64(const Callback::Return* ret) { return ret->getRet<int64_t>(); }
 extern "C"
-PLUGIN_API uint64_t GetReturnUInt64(const Callback::ReturnValue* ret) { return ret->getRet<uint64_t>(); }
+PLUGIN_API uint64_t GetReturnUInt64(const Callback::Return* ret) { return ret->getRet<uint64_t>(); }
 extern "C"
-PLUGIN_API float GetReturnFloat(const Callback::ReturnValue* ret) { return ret->getRet<float>(); }
+PLUGIN_API float GetReturnFloat(const Callback::Return* ret) { return ret->getRet<float>(); }
 extern "C"
-PLUGIN_API double GetReturnDouble(const Callback::ReturnValue* ret) { return ret->getRet<double>(); }
+PLUGIN_API double GetReturnDouble(const Callback::Return* ret) { return ret->getRet<double>(); }
 extern "C"
-PLUGIN_API void* GetReturnPointer(const Callback::ReturnValue* ret) { return ret->getRet<void*>(); }
+PLUGIN_API void* GetReturnPointer(const Callback::Return* ret) { return ret->getRet<void*>(); }
 extern "C"
-PLUGIN_API const char* GetReturnString(const Callback::ReturnValue* ret) { return ret->getRet<const char*>(); }
+PLUGIN_API const char* GetReturnString(const Callback::Return* ret) { return ret->getRet<const char*>(); }
 extern "C"
-PLUGIN_API const wchar_t* GetReturnWString(const Callback::ReturnValue* ret) { return ret->getRet<const wchar_t*>(); }
+PLUGIN_API const wchar_t* GetReturnWString(const Callback::Return* ret) { return ret->getRet<const wchar_t*>(); }
 
 extern "C"
-PLUGIN_API void SetReturnBool(const Callback::ReturnValue* ret, bool value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnBool(const Callback::Return* ret, bool value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnInt8(const Callback::ReturnValue* ret, int8_t value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnInt8(const Callback::Return* ret, int8_t value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnUInt8(const Callback::ReturnValue* ret, uint8_t value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnUInt8(const Callback::Return* ret, uint8_t value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnInt16(const Callback::ReturnValue* ret, int16_t value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnInt16(const Callback::Return* ret, int16_t value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnUInt16(const Callback::ReturnValue* ret, uint16_t value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnUInt16(const Callback::Return* ret, uint16_t value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnInt32(const Callback::ReturnValue* ret, int32_t value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnInt32(const Callback::Return* ret, int32_t value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnUInt32(const Callback::ReturnValue* ret, uint32_t value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnUInt32(const Callback::Return* ret, uint32_t value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnInt64(const Callback::ReturnValue* ret, int64_t value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnInt64(const Callback::Return* ret, int64_t value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnUInt64(const Callback::ReturnValue* ret, uint64_t value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnUInt64(const Callback::Return* ret, uint64_t value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnFloat(const Callback::ReturnValue* ret, float value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnFloat(const Callback::Return* ret, float value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnDouble(const Callback::ReturnValue* ret, double value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnDouble(const Callback::Return* ret, double value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnPointer(const Callback::ReturnValue* ret, void* value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnPointer(const Callback::Return* ret, void* value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnString(const Callback::ReturnValue* ret, const char* value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnString(const Callback::Return* ret, const char* value) { return ret->setRet(value); }
 extern "C"
-PLUGIN_API void SetReturnWString(const Callback::ReturnValue* ret, const wchar_t* value) { return ret->setRet(value); }
+PLUGIN_API void SetReturnWString(const Callback::Return* ret, const wchar_t* value) { return ret->setRet(value); }
