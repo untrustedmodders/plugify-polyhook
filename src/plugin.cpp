@@ -100,8 +100,6 @@ Callback* PolyHookPlugin::hookVirtual(void* pClass, int index, DataType returnTy
 		return nullptr;
 	}
 
-	constexpr bool isPatched = false;
-
 	uint64_t JIT = callback->getJitFunc(returnType, arguments, &PreCallback, &PostCallback);
 
 	auto& [redirectMap, origVFuncs] = m_tables[pClass];
@@ -231,7 +229,7 @@ void PolyHookPlugin::unhookAllVirtual(void* pClass) {
 	}
 }
 
-void* PLH::PolyHookPlugin::findOriginalAddr(void* pClass, void* pAddr) {
+void* PolyHookPlugin::findOriginalAddr(void* pClass, void* pAddr) {
 	auto it = m_tables.find(pClass);
 	if (it != m_tables.end()) {
 		auto& [redirectMap, origVFuncs] = it->second;
