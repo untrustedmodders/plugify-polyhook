@@ -203,7 +203,7 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 		} else if (asmjit::TypeUtils::isFloat(argType)) {
 			cc.movq(argRegisters.at(argIdx).as<asmjit::x86::Xmm>(), argsStackIdx);
 		} else {
-			//Log::log("Parameters wider than 64bits not supported", ErrorLevel::SEV);
+			m_errorCode = "Parameters wider than 64bits not supported";
 			return 0;
 		}
 
@@ -266,7 +266,7 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 		} else if (asmjit::TypeUtils::isFloat(argType)) {
 			cc.movq(argRegisters.at(argIdx).as<asmjit::x86::Xmm>(), argsStackIdx);
 		} else {
-			//Log::log("Parameters wider than 64bits not supported", ErrorLevel::SEV);
+			m_errorCode = "Parameters wider than 64bits not supported";
 			return 0;
 		}
 
