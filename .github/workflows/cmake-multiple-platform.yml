@@ -68,7 +68,7 @@ jobs:
           cp build/${{env.BUILD_TYPE}}/polyhook.dll build/output/bin
           cp build/polyhook.pplugin build/output
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: polyhook-build-windows-${{ env.GITHUB_SHA_SHORT }}
           path: build/output/
@@ -105,7 +105,7 @@ jobs:
           mv build/libpolyhook.so build/output/bin
           mv build/polyhook.pplugin build/output
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: polyhook-build-linux-${{ env.GITHUB_SHA_SHORT }}
           path: build/output/
