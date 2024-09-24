@@ -66,12 +66,12 @@ namespace PLH {
 
 			// asm depends on this specific type
 			// we the ILCallback allocates stack space that is set to point here
-			volatile uint64_t m_arguments;
+			volatile uintptr_t m_arguments;
 
 		private:
 			// must be char* for aliasing rules to work when reading back out
 			char* getArgPtr(const uint8_t idx) const {
-				return (char*) &m_arguments + sizeof(uint64_t) * idx;
+				return (char*) &m_arguments + sizeof(uintptr_t) * idx;
 			}
 		};
 
@@ -88,7 +88,7 @@ namespace PLH {
 			uint8_t* getRetPtr() const {
 				return (unsigned char*)&m_retVal;
 			}
-			volatile uint64_t m_retVal;
+			volatile uintptr_t m_retVal;
 		};
 
 		struct Property {
@@ -104,11 +104,11 @@ namespace PLH {
 		Callback();
 		~Callback();
 
-		uint64_t getJitFunc(const asmjit::FuncSignature& sig, asmjit::Arch arch, CallbackEntry pre, CallbackEntry post);
-		uint64_t getJitFunc(DataType retType, const std::vector<DataType>& paramTypes, CallbackEntry pre, CallbackEntry post);
+		uintptr_t getJitFunc(const asmjit::FuncSignature& sig, asmjit::Arch arch, CallbackEntry pre, CallbackEntry post);
+		uintptr_t getJitFunc(DataType retType, const std::vector<DataType>& paramTypes, CallbackEntry pre, CallbackEntry post);
 
-		uint64_t* getTrampolineHolder();
-		uint64_t* getFunctionHolder();
+		uintptr_t* getTrampolineHolder();
+		uintptr_t* getFunctionHolder();
 		View getCallbacks(CallbackType type);
 		std::string_view getError() const;
 
@@ -123,9 +123,9 @@ namespace PLH {
 
 		std::array<std::vector<CallbackHandler>, 2> m_callbacks;
 		std::shared_mutex m_mutex;
-		uint64_t m_functionPtr = 0;
+		uintptr_t m_functionPtr = 0;
 		union {
-			uint64_t m_trampolinePtr = 0;
+			uintptr_t m_trampolinePtr = 0;
 			const char* m_errorCode;
 		};
 	};
