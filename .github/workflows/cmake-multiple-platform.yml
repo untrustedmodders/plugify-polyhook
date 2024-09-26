@@ -203,7 +203,7 @@ jobs:
             package_name = 'polyhook-build-${{ needs.setup.outputs.buildnumber }}-{}-${{ env.GITHUB_SHA_SHORT }}'
             checksum_linux = '${{ needs.publish.outputs.checksum_linux }}'
             checksum_windows = '${{ needs.publish.outputs.checksum_windows }}'
-            json_url = 'https://untrustedmodders.github.io/polyhook/polyhook.json'
+            json_url = 'https://untrustedmodders.github.io/plugify-polyhook/polyhook.json'
             
             def load_json_from_url(url):
                 try:
