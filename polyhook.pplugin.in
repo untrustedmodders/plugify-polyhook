@@ -7,7 +7,7 @@
   "createdBy": "stevemk14ebr",
   "createdByURL": "https://github.com/stevemk14ebr/PolyHook_2_0",
   "docsURL": "https://github.com/stevemk14ebr/PolyHook_2_0",
-  "downloadURL": "https://github.com/untrustedmodders/polyhook/releases/download/v${POLYHOOK_VERSION}/${POLYHOOK_PACKAGE}.zip",
+  "downloadURL": "https://github.com/untrustedmodders/plugify-polyhook/releases/download/v${POLYHOOK_VERSION}/${POLYHOOK_PACKAGE}.zip",
   "updateURL": "https://untrustedmodders.github.com/polyhook/polyhook.json",
   "entryPoint": "bin/polyhook",
   "supportedPlatforms": [],

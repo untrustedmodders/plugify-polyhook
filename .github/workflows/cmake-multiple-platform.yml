@@ -231,7 +231,7 @@ jobs:
                 new_version = {
                     "version": version,
                     "checksum": f"{checksum}",
-                    "download": f"https://github.com/untrustedmodders/polyhook/releases/download/v{version}/{package.format(platform)}.zip",
+                    "download": f"https://github.com/untrustedmodders/plugify-polyhook/releases/download/v{version}/{package.format(platform)}.zip",
                     "platforms": [f"{platform}"]
                 }
             
