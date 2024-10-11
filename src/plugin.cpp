@@ -63,9 +63,9 @@ Callback* PolyHookPlugin::hookDetour(void* pFunc, DataType returnType, const std
 		return nullptr;
 	}
 
-	uintptr_t JIT = callback->getJitFunc(returnType, arguments, &PreCallback, &PostCallback);
+	uint64_t JIT = callback->getJitFunc(returnType, arguments, &PreCallback, &PostCallback);
 
-	auto detour = std::make_unique<NatDetour>((uintptr_t)pFunc, JIT, callback->getTrampolineHolder());
+	auto detour = std::make_unique<NatDetour>((uint64_t)pFunc, JIT, callback->getTrampolineHolder());
 	if (!detour->hook())
 		return nullptr;
 
@@ -96,16 +96,16 @@ Callback* PolyHookPlugin::hookVirtual(void* pClass, int index, DataType returnTy
 		return nullptr;
 	}
 
-	uintptr_t JIT = callback->getJitFunc(returnType, arguments, &PreCallback, &PostCallback);
+	uint64_t JIT = callback->getJitFunc(returnType, arguments, &PreCallback, &PostCallback);
 
 	auto& [redirectMap, origVFuncs] = m_tables[pClass];
 	redirectMap[index] = JIT;
 
-	auto vtable = std::make_unique<VTableSwapHook>((uintptr_t) pClass, redirectMap, &origVFuncs);
+	auto vtable = std::make_unique<VTableSwapHook>((uint64_t) pClass, redirectMap, &origVFuncs);
 	if (!vtable->hook())
 		return nullptr;
 
-	uintptr_t origVFunc = origVFuncs[index];
+	uint64_t origVFunc = origVFuncs[index];
 	*callback->getTrampolineHolder() = origVFunc;
 
 	void* key = m_vhooks.emplace(pClass, std::move(vtable)).first->second.get();
@@ -158,7 +158,7 @@ bool PolyHookPlugin::unhookVirtual(void* pClass, int index) {
 				return true;
 			}
 
-			vtable = std::make_unique<VTableSwapHook>((uintptr_t) pClass, redirectMap, &origVFuncs);
+			vtable = std::make_unique<VTableSwapHook>((uint64_t) pClass, redirectMap, &origVFuncs);
 
 			if (!vtable->hook())
 				return false;
@@ -241,7 +241,7 @@ void* PolyHookPlugin::findOriginalAddr(void* pClass, void* pAddr) {
 int PolyHookPlugin::getVTableIndex(void* pFunc) const {
 	constexpr size_t size = 12;
 
-	MemoryProtector protector((uintptr_t)pFunc, size, R, *(MemAccessor*)this);
+	MemoryProtector protector((uint64_t)pFunc, size, R, *(MemAccessor*)this);
 
 #if defined(__GNUC__) || defined(__clang__)
 	struct GCC_MemFunPtr {
@@ -299,7 +299,7 @@ int PolyHookPlugin::getVTableIndex(void* pFunc) const {
 			// Check where it'd jump
 			addr += 5 /*size of the instruction*/ + *(uint32_t*)(addr + 1);
 
-			protector = std::make_unique<MemoryProtector>((uintptr_t)addr, size, R, *(MemAccessor*)this);
+			protector = std::make_unique<MemoryProtector>((uint64_t)addr, size, R, *(MemAccessor*)this);
 		}
 
 		bool ok = false;

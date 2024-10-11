@@ -41,7 +41,7 @@ asmjit::TypeId PLH::Callback::getTypeId(DataType type) {
 	return asmjit::TypeId::kVoid;
 }
 
-uintptr_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmjit::Arch arch, const CallbackEntry pre, const CallbackEntry post) {
+uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmjit::Arch arch, const CallbackEntry pre, const CallbackEntry post) {
 	if (m_functionPtr) {
 		return m_functionPtr;
 	}
@@ -110,7 +110,7 @@ uintptr_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmj
 	}
 
 	// setup the stack structure to hold arguments for user callback
-	uint32_t stackSize = (uint32_t)(sizeof(uintptr_t) * sig.argCount());
+	uint32_t stackSize = (uint32_t)(sizeof(uint64_t) * sig.argCount());
 	asmjit::x86::Mem argsStack = cc.newStack(stackSize, 16);
 	asmjit::x86::Mem argsStackIdx(argsStack);
 
@@ -120,8 +120,8 @@ uintptr_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmj
 	// stackIdx <- stack[i].
 	argsStackIdx.setIndex(i);
 
-	// r/w are sizeof(uintptr_t) width now
-	argsStackIdx.setSize(sizeof(uintptr_t));
+	// r/w are sizeof(uint64_t) width now
+	argsStackIdx.setSize(sizeof(uint64_t));
 
 	// set i = 0
 	cc.mov(i, 0);
@@ -139,8 +139,8 @@ uintptr_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmj
 			return 0;
 		}
 
-		// next structure slot (+= sizeof(uintptr_t))
-		cc.add(i, sizeof(uintptr_t));
+		// next structure slot (+= sizeof(uint64_t))
+		cc.add(i, sizeof(uint64_t));
 	}
 
 	auto callbackSig = asmjit::FuncSignature::build<void, Callback*, Parameters*, Property*, Return*>();
@@ -154,18 +154,18 @@ uintptr_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmj
 	cc.lea(argStruct, argsStack);
 
 	// create buffer for property struct
-	asmjit::x86::Mem propStack = cc.newStack(sizeof(uintptr_t), 16);
+	asmjit::x86::Mem propStack = cc.newStack(sizeof(uint64_t), 16);
 	asmjit::x86::Gp propStruct = cc.newUIntPtr("propStruct");
 	cc.lea(propStruct, propStack);
 
 	// create buffer for return struct
-	asmjit::x86::Mem retStack = cc.newStack(sizeof(uintptr_t), 16);
+	asmjit::x86::Mem retStack = cc.newStack(sizeof(uint64_t), 16);
 	asmjit::x86::Gp retStruct = cc.newUIntPtr("retStruct");
 	cc.lea(retStruct, retStack);
 
 	{
 		asmjit::x86::Mem propStackIdx(propStack);
-		propStackIdx.setSize(sizeof(uintptr_t));
+		propStackIdx.setSize(sizeof(uint64_t));
 		Property property{ (int32_t) sig.argCount(), ReturnFlag::Default };
 		cc.mov(propStackIdx, *(int64_t*) &property);
 	}
@@ -207,8 +207,8 @@ uintptr_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmj
 			return 0;
 		}
 
-		// next structure slot (+= sizeof(uintptr_t))
-		cc.add(i, sizeof(uintptr_t));
+		// next structure slot (+= sizeof(uint64_t))
+		cc.add(i, sizeof(uint64_t));
 	}
 
 	// deref the trampoline ptr (holder must live longer, must be concrete reg since push later)
@@ -232,7 +232,7 @@ uintptr_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmj
 		origInvokeNode->setRet(0, retRegister);
 
 		asmjit::x86::Mem retStackIdx(retStack);
-		retStackIdx.setSize(sizeof(uintptr_t));
+		retStackIdx.setSize(sizeof(uint64_t));
 		if (asmjit::TypeUtils::isInt(sig.ret())) {
 			cc.mov(retStackIdx, retRegister.as<asmjit::x86::Gp>());
 		} else {
@@ -270,15 +270,15 @@ uintptr_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmj
 			return 0;
 		}
 
-		// next structure slot (+= sizeof(uintptr_t))
-		cc.add(i, sizeof(uintptr_t));
+		// next structure slot (+= sizeof(uint64_t))
+		cc.add(i, sizeof(uint64_t));
 	}
 
 	cc.bind(noPost);
 
 	if (sig.hasRet()) {
 		asmjit::x86::Mem retStackIdx(retStack);
-		retStackIdx.setSize(sizeof(uintptr_t));
+		retStackIdx.setSize(sizeof(uint64_t));
 		if (asmjit::TypeUtils::isInt(sig.ret())) {
 			asmjit::x86::Gp tmp = cc.newUIntPtr();
 			cc.mov(tmp, retStackIdx);
@@ -306,7 +306,7 @@ uintptr_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmj
 	return m_functionPtr;
 }
 
-uintptr_t PLH::Callback::getJitFunc(const DataType retType, const std::vector<DataType>& paramTypes, const CallbackEntry pre, const CallbackEntry post) {
+uint64_t PLH::Callback::getJitFunc(const DataType retType, const std::vector<DataType>& paramTypes, const CallbackEntry pre, const CallbackEntry post) {
 	asmjit::FuncSignature sig(asmjit::CallConvId::kHost, asmjit::FuncSignature::kNoVarArgs, getTypeId(retType));
 	for (const DataType& type : paramTypes) {
 		sig.addArg(getTypeId(type));
@@ -381,11 +381,11 @@ PLH::Callback::View PLH::Callback::getCallbacks(const CallbackType type) {
 	return { m_callbacks[to_integral(type)], std::shared_lock(m_mutex) };
 }
 
-uintptr_t* PLH::Callback::getTrampolineHolder() {
+uint64_t* PLH::Callback::getTrampolineHolder() {
 	return &m_trampolinePtr;
 }
 
-uintptr_t* PLH::Callback::getFunctionHolder() {
+uint64_t* PLH::Callback::getFunctionHolder() {
 	return &m_functionPtr;
 }
 
