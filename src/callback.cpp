@@ -213,7 +213,7 @@ uint64_t PLH::Callback::getJitFunc(const asmjit::FuncSignature& sig, const asmji
 
 	// deref the trampoline ptr (holder must live longer, must be concrete reg since push later)
 	asmjit::x86::Gp origPtr = cc.zbx();
-	cc.mov(origPtr, getTrampolineHolder());
+	cc.mov(origPtr, (uintptr_t)getTrampolineHolder());
 	cc.mov(origPtr, asmjit::x86::ptr(origPtr));
 
 	asmjit::InvokeNode* origInvokeNode;
